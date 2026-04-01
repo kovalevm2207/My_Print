@@ -1,0 +1,199 @@
+;32-битный Линукс
+;//==========================================================
+;// O-Linux-as.s
+;//==========================================================
+
+;// gcc -c -o 1-as.s            ; ld -s -o 1-as 1-as.o
+
+;// as  -a -o 1-as.s > 1-as.lst ; ld -s -o 1-as 1-as.o
+
+.intel_syntax noprefix          ;// позволяет писать на интеловском синтаксисе
+
+.text
+
+            .globl _start           ;// вместо 100h
+
+_start:     mov eax, 0x04           ;// write
+            mov ebx, 1              ;// stdout
+            mov ecx, Msg
+            mov edx, 10             ;// strlen
+            int 0x80
+
+            mov eax, 0x01           ;// exit (ebx)
+            xor ebx, ebx
+            int 0x80
+
+.data
+
+Msg:        .string "__Hllwrld\n"
+
+;-----------------------------------------------------------------------------------------------------
+
+; тот же 32-битный Линукс, но другой ассемблер
+;:==========================================================
+;: O-Linux-nasm.s
+;:==========================================================
+
+; nasm -f elf -l 1-nasm.lst 1-nasm.s  ;  ld -s -m elf_i386 -o 1-nasm 1-nasm.o
+
+section .code
+
+global _start                       ;predefined entry point name for ld
+
+_start:     mov eax, 4              ; write (ebx, ecx, edx)
+            mov ebx, 1              ; stdout
+            mov ecx, Msg
+            mov edx, MsgLen         ; strlen(Msg)
+            int 80h
+
+            mov eax, 0x01           ; exit (ebx)
+            xor ebx, ebx
+            int 0x80
+
+section .data
+
+Msg:        db "__Hllwrld\n", 0x0a
+MsgLen      equ $ - Msg
+
+;-----------------------------------------------------------------------------------------------------
+
+; тот же nasm, но теперь уже 64-битный Линукс
+;:==========================================================
+;: O-Linux-nasm-64.s
+;:==========================================================
+
+; nasm -f elf64 -l 1-nasm.lst 1-nasm.s  ;  ld -s -o 1-nasm 1-nasm.o
+
+section .code
+
+global _start                       ;predefined entry point name for ld
+
+_start:     mov rax, 0x01           ; write64 (rdi, rsi, rdx) ... r10, r8, r9
+            mov rdi, 1              ; stdout
+            mov rsi, Msg
+            mov rdx, MsgLen         ; strlen(Msg)
+            syscall
+
+            mov rax, 0x3c           ; exit64 (rdi)
+            xor rdi, rdi
+            syscall
+
+section .data
+
+Msg:        db "__Hllwrld\n", 0x0a
+MsgLen      equ $ - Msg
+
+;-----------------------------------------------------------------------------------------------------
+
+; тот же nasm, но теперь уже 64-битный Мак
+;:==========================================================
+;: O-MacOS-nasm-64.s
+;:==========================================================
+
+; nasm -f macho -l 1-nasm.lst 1-nasm.s  ;  ld -s -o 1-nasm 1-nasm.o
+
+section .code
+
+global start                        ;predefined entry point name for MacOS ld
+
+_start:     mov rax, 0x2000004      ; write64bsd (rdi, rsi, rdx) ... r10, r8, r9
+            mov rdi, 1              ; stdout
+            mov rsi, Msg
+            mov rdx, MsgLen         ; strlen(Msg)
+            syscall
+
+            mov rax, 0x2000001      ; exit64bsd (rdi)
+            xor rdi, rdi
+            syscall
+
+section .data
+
+Msg:        db "__Hllwrld\n", 0x0a
+MsgLen      equ $ - Msg
+
+;-----------------------------------------------------------------------------------------------------
+
+; тот же nasm, но теперь уже 64-битный Windows
+;:==========================================================
+;: O-Nasm+Alink-xp.asm
+;:==========================================================
+
+; nasm      "0-Nasm+Alink-xp.asm" -f obj -l "0-Nasm+Alink-xp.lst"
+; alink     "0-Nasm+Alink-xp.obj" -oPE -C -subbsys console
+; disasm    "0-Nasm+Alink-xp.exe" -b 32 -e 512 > "0-Nasm+Alink-xp.disasm"
+
+; Hardcoded addrs are valid for Microsoft Windows XP [Версия 5.1.2600] ONLY
+
+section .code use32
+
+..start:    push -11                ; STD_OUTPUT_HANDLE = -11
+            mov eax, 7c8100c89h     ; GetStdHandle
+            call eax                ; eax = stdout = GetStdHandle (STD_OUTPUT_HANDLE)
+
+            xor edx, edx
+            push edx                ; Resvd = 0
+            push edx                ; Ptr to number of chars written = NULL
+            push 5                  ; sizeof ("Text\n")
+            push dword MsgText
+            push eax                ; stdout = GetHandle (STD_OUTPUT_HANDLE)
+            mov eax, 7c81d355h      ; WriteConsoleA
+            call eax                ; WriteConsoleA (stdout, MsgText, 5, NULL, 0)
+
+            push 7c81d20ah          ; ExitProcess
+            ret                     ; he-he
+
+Text        db "Text\n", 0ah
+
+; Адреса получаются либо с помощью какой-то функции на Си ______
+                                                                \
+                                                                 |
+                        ________________________________________/
+// GetProcAddress  /___/
+                   \
+#include    <windows.h>
+#include    <stdio.h>
+
+int main (int argc, const char* argv[])
+
+
+; Но сами создатели винды сделали это через таблицу импорта, которая включается и заполняется сама по себе
+
+
+;:=====================================================================
+;: 1-Fasm.asm
+;:=====================================================================
+
+;  fasm + WinPI + hand-made intel_syntax
+
+;  fasm "1-Fasm.asm"
+
+;:---------------------------------------------------------------------
+
+format PE CONSOLE 4.0
+
+entry Start
+
+library kernel32, "kernel32.dll"    ;
+library user32,   "user32.dll"      ;
+
+import kernel32, GetStdHandle, "GetStdHandle", \
+                 WriteConsoleA, "WriteConsoleA", \
+                 ExitProcess.   "ExitProcess"
+
+import user
+
+.
+.   See files from installed directory from site ded32.ru
+.
+
+
+; Там еще короче просто дохера примеров одного и того же, и все это надо уметь ...
+
+Что надо сделать (до четверга - среды):
+(1) Загрузить архив деда с его сайта (отключаем антивирусы, возможно и при работе с архивом, антивирусы могут стереть файлы)
+(2) Срочно прочитать 3ю главу Брайнт-Охаларон про "jmp таблицы", стратегия компиляции switch
+(3) Начиная с четверга пишем свой вариант printf() на ассемблере
+    В нашем принтфе не учитываем спецификацию длины, ширины и выравнивания
+    %c,s,o,b,x (,f-сложнее, в самом конце, если остается время)
+(4) Вызывать из Си свой ассемблерный printf
+(5) Вызывать в ассемблерном printf стандартный printf для отслеживания корректности работы нашего, то есть выводим просто по две строчки.
