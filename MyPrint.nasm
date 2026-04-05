@@ -77,5 +77,9 @@ MyPrint:
 
         add     rsp, 40         ; restore stack
 
+        pop     rsi
+        pop     rdi
+        pop     rbp
+
         ret
 
