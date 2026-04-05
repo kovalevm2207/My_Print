@@ -34,13 +34,14 @@ global MyPrint
 
 MyPrint:
         ; Save address beginning of arguments
-        mov     rax, rbp
-        mov     rbp, rsp
+        push    rbp
+        mov     rbp, rsp        ; return address is on rbp+8  position
+                                ; first argument is on rbp+16 position e.t.c.
 
         ; Save Nonvolatile registers
-        push    rax     ;  == rbp
         push    rdi
         push    rsi
+        sub     rsp, 8          ; for the 16 alignment
         ; We must end our program with old rsp to save it
         ; We must implement this: push    r8, ..., r11 ; if we will use this registers
 
@@ -77,6 +78,8 @@ MyPrint:
 
         add     rsp, 40         ; restore stack
 
+        ; restore Nonvolatile registers
+        add     rsp, 8          ; restore after 16 alignment, when we were have saving Nonvolatile registers
         pop     rsi
         pop     rdi
         pop     rbp
