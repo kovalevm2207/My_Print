@@ -2,7 +2,6 @@ global main
 
 extern WriteFile    ; Подключаем нативные функции,
 extern GetStdHandle ; чтобы ими можно было воспользоваться
-extern WriteConsolA
 
 section .text
 main:
