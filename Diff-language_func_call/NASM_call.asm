@@ -26,7 +26,7 @@ main:
     lea r9,   [rel company]
     mov r10,  [rel salary]
     mov qword [rsp+32], r10
-    call printjf
+    call printf
 
     add rsp, 40
 
