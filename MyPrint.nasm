@@ -38,11 +38,10 @@ MyPrint:
         mov     rsi, rcx
         lea     rdi, OPBuf
         COUNT_LEN ; = rcx
+        add     rax, rcx        ; calculate return value
 
         rep     movsb           ; copy part of format string in output buffer
-        cmp     byte [rsi], '\0'
-
-        add     rax, rdi-OPBuf  ; calculate return value
+        cmp     byte [rsi], 0   ; check end of string
 
         push    rax             ; save return value
         sub     rsp, 40         ; allocate Shadow Space
