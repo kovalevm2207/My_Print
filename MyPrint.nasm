@@ -1,26 +1,29 @@
 ; Simple Print version, which can analyze and output only text string without specifiers
 
+extern GetStdHandle
+extern WriteFile
+
 ; Read and count in rcx number of string's symbols, while we don't find '%' or '\0'
-%macro  COUNT_LEN_FOR_COPY_IN_OPBuf
+%macro  COUNT_LEN_FOR_COPY_IN_OPBuf 0
         xor     rcx, rcx
         mov     rdx, rsi        ; save str position
 
-..@Next:mov     bl, byte [rsi]
+%%Next:mov     bl, byte [rsi]
 
         cmp     bl, '%'
-        je      ..@Break
+        je      %%Break
 
         cmp     bl, 0           ; end of format string
-        je      ..@Break
+        je      %%Break
 
         inc     rcx
         inc     rsi
         xor     bl, bl
 
         cmp     rcx, 256
-        jb      ..@Next
+        jb      %%Next
 
-..@Break:
+%%Break:
         mov     rsi, rdx        ; restore str position
 %endmacro
 
@@ -71,7 +74,7 @@ MyPrint:
         sub     rsp, 40         ; allocate Shadow Space
 
         mov     rdx, OPBuf      ; buffer
-        mov     r8d, rax        ; len
+        mov     r8, rax        ; len
         xor     r9, r9
         mov     qword [rsp+32], 0
         call    WriteFile       ; display
