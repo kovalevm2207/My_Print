@@ -1,9 +1,9 @@
 ; Simple Print version, which can analyze and output only text string without specifiers
 
 ; Read and count in rcx number of string's symbols, while we don't find '%' or '\0'
-%macro  COUNT_LEN
+%macro  COUNT_LEN_FOR_COPY_IN_OPBuf
         xor     rcx, rcx
-        push    rsi
+        mov     rdx, rsi        ; save str position
 
 ..@Next:mov     bl, byte [rsi]
 
@@ -18,10 +18,10 @@
         xor     bl, bl
 
         cmp     rcx, 256
-        jbe     ..@Next
+        jb      ..@Next
 
 ..@Break:
-        pop     rsi
+        mov     rsi, rdx        ; restore str position
 %endmacro
 
 section .bss
@@ -33,15 +33,28 @@ section .text
 global MyPrint
 
 MyPrint:
-        xor     rax, rax
+        ; Save address beginning of arguments
+        mov     rax, rbp
+        mov     rbp, rsp
 
-        mov     rsi, rcx
+        ; Save Nonvolatile registers
+        push    rax     ;  == rbp
+        push    rdi
+        push    rsi
+        ; We must end our program with old rsp to save it
+        ; We must implement this: push    r8, ..., r11 ; if we will use this registers
+
+        xor     rax, rax        ; return value = NULL
+
+        ; move part of format string to OPBuf
+        mov     rsi, rcx        ; rsi = format string
         lea     rdi, OPBuf
-        COUNT_LEN ; = rcx
-        add     rax, rcx        ; calculate return value
+        COUNT_LEN_FOR_COPY_IN_OPBuf ; set: rcx = num of symbols to copy
+        add     rax, rcx        ; update return value
 
         rep     movsb           ; copy part of format string in output buffer
-        cmp     byte [rsi], 0   ; check end of string
+
+        ;cmp     byte [rsi], 0   ; check end of string, last byte must be equal zero
 
         push    rax             ; save return value
         sub     rsp, 40         ; allocate Shadow Space
