@@ -10,7 +10,7 @@
         cmp     bl, '%'
         je      ..@Break
 
-        cmp     bl, '\0'
+        cmp     bl, 0           ; end of format string
         je      ..@Break
 
         inc     rcx
@@ -24,7 +24,7 @@
         pop     rsi
 %endmacro
 
-section .data
+section .bss
 
 OPBuf:  resb 256
 
@@ -39,27 +39,31 @@ MyPrint:
         lea     rdi, OPBuf
         COUNT_LEN ; = rcx
 
-        rep     movsb
+        rep     movsb           ; copy part of format string in output buffer
         cmp     byte [rsi], '\0'
 
-        add     rax, rdi-OPBuf
+        add     rax, rdi-OPBuf  ; calculate return value
 
-        push    rax
+        push    rax             ; save return value
+        sub     rsp, 40         ; allocate Shadow Space
+
         mov     rcx, -11
         call    GetStdHandle
+
+        add     rsp, 40         ; restore stack
 
         mov     rcx, rax        ; put descriptor
         pop     rax             ; restore return value
 
-        sub     rsp, 40
+        sub     rsp, 40         ; allocate Shadow Space
 
         mov     rdx, OPBuf      ; buffer
         mov     r8d, rax        ; len
         xor     r9, r9
         mov     qword [rsp+32], 0
-        call    WriteFile
+        call    WriteFile       ; display
 
-        add     rsp, 40
+        add     rsp, 40         ; restore stack
 
         ret
 
