@@ -1,6 +1,6 @@
-global MyAdd
-
 section .text
+
+global MyAdd
 
 MyAdd:
     mov rax, rcx
