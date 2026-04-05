@@ -44,5 +44,22 @@ MyPrint:
 
         add     rax, rdi-OPBuf
 
+        push    rax
+        mov     rcx, -11
+        call    GetStdHandle
+
+        mov     rcx, rax        ; put descriptor
+        pop     rax             ; restore return value
+
+        sub     rsp, 40
+
+        mov     rdx, OPBuf      ; buffer
+        mov     r8d, rax        ; len
+        xor     r9, r9
+        mov     qword [rsp+32], 0
+        call    WriteFile
+
+        add     rsp, 40
+
         ret
 
