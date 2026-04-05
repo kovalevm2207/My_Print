@@ -16,7 +16,9 @@
         inc     rcx
         inc     rsi
         xor     bl, bl
-        jmp     ..@Next
+
+        cmp     rcx, 256
+        jbe     ..@Next
 
 ..@Break:
         pop     rsi
@@ -31,12 +33,16 @@ section .text
 global MyPrint
 
 MyPrint:
+        xor     rax, rax
 
         mov     rsi, rcx
         lea     rdi, OPBuf
         COUNT_LEN ; = rcx
 
         rep     movsb
+        cmp     byte [rsi], '\0'
+
+        add     rax, rdi-OPBuf
 
         ret
 
