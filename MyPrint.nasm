@@ -52,7 +52,7 @@ MyPrint:
 
         ; move part of format string to OPBuf
         mov     rsi, rcx        ; rsi = format string
-        lea     rdi, OPBuf
+        mov     rdi, OPBuf
         COUNT_LEN_FOR_COPY_IN_OPBuf ; set: rcx = num of symbols to copy
         add     rax, rcx        ; update return value
 
