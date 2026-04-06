@@ -10,11 +10,22 @@ extern int MyPrint(const char* const format);
 
 void TestFunc(const char* const TestType, const char* const Format, const int TestNum);
 
+const struct
+{
+    const char* const TestType;
+    const char* const Format;
+} Tests[] =
+{
+    {"clear format string and check drop buffer", "Mike"},
+    {"clear format string", "Mike- the best engineer in the world"}
+};
+
+const size_t NumOfTests = sizeof(Tests)/sizeof(Tests[0]);
+
 int main()
 {
-    TestFunc("clear format string",                       "Mike",                                 1);
-    TestFunc("clear format string and check drop buffer", "Mike- the best engineer in the world", 2);
-
+    for (int i = 0; i < NumOfTests; i++)
+        TestFunc(Tests[i].TestType, Tests[i].Format, i);
     return 0;
 }
 
