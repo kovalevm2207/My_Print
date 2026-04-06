@@ -4,6 +4,7 @@ default rel
 
 extern GetStdHandle
 extern WriteFile
+extern printf
 
 OPBuf_size      equ  8
 
@@ -139,4 +140,13 @@ MyPrint:
         pop     rdi
         pop     rbp
 
+        mov     rcx, qword [rsp+8 ]
+        mov     rdx, qword [rsp+16]
+        mov     r8,  qword [rsp+24]
+        mov     r9,  qword [rsp+32]
+
+        pop     rbx
+        call    printf
+
+        push    rbx
         ret
