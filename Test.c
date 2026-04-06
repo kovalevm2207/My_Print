@@ -38,14 +38,14 @@ void TestFunc(const char* const TestType, const char* const Format, const int Te
            "\n"
            "Test results:\n"
            "MyPrint:    \n"
-           "            string: " GREEN, TestNum, TestType);
+           "            string:\n" GREEN, TestNum, TestType);
 
     int test = MyPrint(Format);
 
     printf(RESET "\n      return value: " GREEN "%d\n"
                  "\n" RESET, test);
     printf("printf:     \n"
-           "            string: " RED);
+           "            string:\n" RED);
 
     int ans = printf(Format);
 
