@@ -3,6 +3,8 @@
 extern GetStdHandle
 extern WriteFile
 
+OPBuf_size      equ  8
+
 ; Read and count in rcx number of string's symbols, while we don't find '%' or '\0'
 %macro  COUNT_LEN_FOR_COPY_IN_OPBuf 0
         xor     rcx, rcx
@@ -20,7 +22,7 @@ extern WriteFile
         inc     rsi
         xor     bl, bl
 
-        cmp     rcx, 256
+        cmp     rcx, OPBuf_size
         jb      %%Next
 
 %%Break:
@@ -29,7 +31,7 @@ extern WriteFile
 
 section .bss
 
-OPBuf:  resb 256
+OPBuf:  resb OPBuf_size
 
 section .text
 
