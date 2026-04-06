@@ -44,9 +44,8 @@ MyPrint:
         ; Save Nonvolatile registers
         push    rdi
         push    rsi
-        sub     rsp, 8          ; for the 16 alignment
-        ; We must end our program with old rsp to save it
-        ; We must implement this: push    r8, ..., r11 ; if we will use this registers
+          ; We must end our program with old rsp to save it
+        ; We must implement this: push    r11 ; if we will use this registers
 
         xor     rax, rax        ; return value = NULL
 
@@ -66,11 +65,11 @@ MyPrint:
         mov     rcx, -11
         call    GetStdHandle
 
-        add     rsp, 40         ; restore stack
-
         mov     rcx, rax        ; put descriptor
-        pop     rax             ; restore return value
 
+        add     rsp, 40         ; restore stack
+        pop     rax             ; restore return value
+        push    rax
         sub     rsp, 40         ; allocate Shadow Space
 
         mov     rdx, OPBuf      ; buffer
@@ -80,12 +79,11 @@ MyPrint:
         call    WriteFile       ; display
 
         add     rsp, 40         ; restore stack
+        pop     rax
 
         ; restore Nonvolatile registers
-        add     rsp, 8          ; restore after 16 alignment, when we were have saving Nonvolatile registers
         pop     rsi
         pop     rdi
         pop     rbp
 
         ret
-
