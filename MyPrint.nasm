@@ -49,23 +49,6 @@ OPBuf_size      equ  8
 %endmacro
 
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-section .bss
-
-OPBuf:  resb OPBuf_size
-
-;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-section .data
-
-OF    db 0
-Type  db 0
-
-TypeJmpTable:
-        dq      Sym_OF
-        dq      Spec
-        dq      Slash
-        dq      DefaultType
-
-;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 section .text
 
 global MyPrint
@@ -118,6 +101,8 @@ Next:   xor     r12, r12        ; len of cur buffer
         add     r12, rcx        ; update len of cur buffer
 
         rep     movsb           ; copy part of format string in output buffer
+
+        jmp     DefaultType
 
 Sym_OF: xor     rcx, rcx
         mov     cl, byte [OPBuf]
@@ -179,6 +164,22 @@ Slash:
         jmp     Sym_OF
 
 DefaultType:
+        ; write fatal err situation
+        sub     rsp, 40         ; allocate Shadow Space
+
+        mov     rcx, -11
+        call    GetStdHandle
+
+        mov     rcx, rax        ; put descriptor
+
+        mov     rdx, TypeErrMsg ; buffer
+        mov     r8, MsgSize         ; len
+        xor     r9, r9
+        mov     qword [rsp+32], 0
+        call    WriteFile       ; display
+
+        add     rsp, 40         ; restore stack
+
         ; restore Nonvolatile registers
         pop     r13
         pop     rbx
@@ -186,6 +187,24 @@ DefaultType:
         pop     rdi
         pop     rbp
 
-        ; write fatal err situation
-
         ret
+
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+section .bss
+
+OPBuf:  resb OPBuf_size
+
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+section .data
+
+OF    db 0
+Type  db 0
+
+TypeErrMsg      db "Type err", 10, 0
+MsgSize        equ $ - TypeErrMsg
+
+TypeJmpTable:
+        dq      Sym_OF
+        dq      Spec
+        dq      Slash
+        dq      DefaultType
