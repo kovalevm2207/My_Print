@@ -106,7 +106,7 @@ MyPrint:
         xor     rax, rax        ; return value = NULL
         xor     rbx, rbx        ; shift in format string = NULL
 
-.Next:  xor     r12, r12        ; len of cur buffer
+Next:   xor     r12, r12        ; len of cur buffer
         ; move part of format string to OPBuf
         mov     rsi, [rbp+16]   ; start of format string
         add     rsi, rbx        ; rsi = ptr in format string = address of start + shift, which equals number of processed symbols
@@ -119,18 +119,14 @@ MyPrint:
 
         rep     movsb           ; copy part of format string in output buffer
 
-        mov     rcx, qword [Type]
-        shl     rcx, 3          ; == rcx*8
-        jmp     [TypeJmpTable+rcx]
-
-.Drop:   xor     rcx, rcx
+Sym_OF: xor     rcx, rcx
         mov     cl, byte [OPBuf]
         add     rcx, r12
         cmp     r12, 0   ; check end of string, last byte must be equal zero
-        jne     .Skip
+        jne     Skip
 
         mov     byte [OF], 0  ; it is branch, where rcx == OPBuf_size & the last symbol in this buffer is '\0'
-.Skip:
+Skip:
 
         push    rax             ; save return value = shift in output buffer
         ; "push    rbx" is optional, because rbx is one of the volatile registers which will be save in functions GetStdHandle and WriteFile
@@ -156,7 +152,7 @@ MyPrint:
         pop     rax             ; restore return value = shift in output buffer
 
         cmp     byte [OF], 1  ; if
-        je      .Next
+        je      Next
 
         ; restore Nonvolatile registers
         pop     r13
@@ -176,14 +172,11 @@ MyPrint:
         push    rbx
         ret
 
-Sym_OF:
-        jmp     .Drop
-
 Spec:
-        jmp     .Drop
+        jmp     Sym_OF
 
 Slash:
-        jmp     .Drop
+        jmp     Sym_OF
 
 DefaultType:
         ; restore Nonvolatile registers
