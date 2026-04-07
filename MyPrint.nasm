@@ -106,6 +106,9 @@ Next:   xor     r12, r12        ; len of cur buffer
         rep     movsb           ; copy part of format string in output buffer
 
         movzx   rcx, byte [rel Type]
+        cmp     rcx, 2
+        ja      DefaultType
+
         lea     rdx, [rel TypeJmpTable]
         jmp     [rdx + rcx*8]
 
@@ -207,4 +210,3 @@ TypeJmpTable:
         dq      Drop
         dq      Spec
         dq      Slash
-        dq      DefaultType
