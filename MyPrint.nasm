@@ -17,33 +17,33 @@ OPBuf_size      equ  8
         mov     byte [rel OF],   0
         mov     byte [rel Type], 0
 
-%%Next: mov     bl, byte [rsi]
+        %%Next: mov     bl, byte [rsi]
 
-        cmp     bl, '%'
-        je      %%Spec
+                cmp     bl, '%'
+                je      %%Spec
 
-        cmp     bl, '\'
-        je      %%Slash
+                cmp     bl, '\'
+                je      %%Slash
 
-        cmp     bl, 0           ; end of format string
-        je      %%Break
+                cmp     bl, 0           ; end of format string
+                je      %%Break
 
-        inc     rcx
-        inc     rsi
-        xor     bl, bl
+                inc     rcx
+                inc     rsi
+                xor     bl, bl
 
-        cmp     rcx, OPBuf_size
-        jb      %%Next
+                cmp     rcx, OPBuf_size
+                jb      %%Next
 
-        mov     byte [rel OF], 1
-        jmp     %%Break
+                mov     byte [rel OF], 1
+                jmp     %%Break
 
-%%Spec: mov     byte [rel Type], 1
-        jmp     %%Break
+        %%Spec: mov     byte [rel Type], 1
+                jmp     %%Break
 
-%%Slash:mov     byte [rel Type], 2
+        %%Slash:mov     byte [rel Type], 2
 
-%%Break:
+        %%Break:
         mov     rbx, r13
         mov     rsi, rdx        ; restore str position
 %endmacro
@@ -105,7 +105,11 @@ Next:   xor     r12, r12        ; len of cur buffer
 
         rep     movsb           ; copy part of format string in output buffer
 
-Sym_OF:
+        movzx   rcx, byte [rel Type]
+        lea     rdx, [rel TypeJmpTable]
+        jmp     [rdx + rcx*8]
+
+Drop:
         mov     r13, rax         ; save return value = shift in output buffer
         sub     rsp, 40         ; allocate Shadow Space
 
@@ -135,22 +139,27 @@ Sym_OF:
         pop     rdi
         pop     rbp
 
+        ; restore args
         mov     rcx, qword [rsp+8 ]
         mov     rdx, qword [rsp+16]
         mov     r8,  qword [rsp+24]
         mov     r9,  qword [rsp+32]
 
+        mov     qword [rel MyPrintRetVal], rax
         pop     rbx
+
         call    printf
 
         push    rbx
+        mov     rax, qword [rel MyPrintRetVal]
+
         ret
 
 Spec:
-        jmp     Sym_OF
+        jmp     Drop
 
 Slash:
-        jmp     Sym_OF
+        jmp     Drop
 
 DefaultType:
         ; write fatal err situation
@@ -186,6 +195,8 @@ OPBuf:  resb OPBuf_size
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 section .data
 
+MyPrintRetVal   dq 0
+
 OF    db 0
 Type  db 0
 
@@ -193,7 +204,7 @@ TypeErrMsg      db "Type err", 10, 0
 MsgSize        equ $ - TypeErrMsg
 
 TypeJmpTable:
-        dq      Sym_OF
+        dq      Drop
         dq      Spec
         dq      Slash
         dq      DefaultType
