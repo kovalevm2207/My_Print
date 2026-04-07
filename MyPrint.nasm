@@ -8,18 +8,23 @@ extern printf
 
 OPBuf_size      equ  8
 
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ; Read and count in rcx number of string's symbols, while we don't find '%' or '\0'
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 %macro  COUNT_LEN_FOR_COPY_IN_OPBuf 0
         xor     rcx, rcx
         mov     rdx, rsi        ; save str position
         mov     r13, rbx        ; save
 
-        mov     byte [OverflowFlag], 0
+        mov     byte [OF], 0
 
 %%Next: mov     bl, byte [rsi]
 
         cmp     bl, '%'
-        je      %%Break
+        je      %%Spec
+
+        cmp     bl, '\'
+        je      %%Slash
 
         cmp     bl, 0           ; end of format string
         je      %%Break
@@ -31,25 +36,41 @@ OPBuf_size      equ  8
         cmp     rcx, OPBuf_size
         jb      %%Next
 
-        mov     byte [OverflowFlag], 1
+        mov     byte [OF], 1
+
+%%Spec: mov     byte [Type], 1
+        jmp     %%Break
+
+%%Slash:mov     byte [Type], 2
 
 %%Break:
         mov     rbx, r13
         mov     rsi, rdx        ; restore str position
 %endmacro
 
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 section .bss
 
 OPBuf:  resb OPBuf_size
 
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 section .data
 
-OverflowFlag    db 0
+OF    db 0
+Type  db 0
 
+TypeJmpTable:
+        dq      Sym_OF
+        dq      Spec
+        dq      Slash
+        dq      DefaultType
+
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 section .text
 
 global MyPrint
 
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ; rax - return value
 ; rbx - shift in format string
 ; r12 -  len of cur buffer
@@ -63,7 +84,7 @@ global MyPrint
 ; remaining Volatile-registers:
 ;       r13 r14 r15
 ;       xmm6 - xmm15
-
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 MyPrint:
         mov     qword [rsp+8 ], rcx     ; save 1st argument
         mov     qword [rsp+16], rdx     ; save 2nd argument
@@ -98,13 +119,17 @@ MyPrint:
 
         rep     movsb           ; copy part of format string in output buffer
 
-        xor     rcx, rcx
+        mov     rcx, qword [Type]
+        shl     rcx, 3          ; == rcx*8
+        jmp     [TypeJmpTable+rcx]
+
+.Drop:   xor     rcx, rcx
         mov     cl, byte [OPBuf]
         add     rcx, r12
         cmp     r12, 0   ; check end of string, last byte must be equal zero
         jne     .Skip
 
-        mov     byte [OverflowFlag], 0  ; it is branch, where rcx == OPBuf_size & the last symbol in this buffer is '\0'
+        mov     byte [OF], 0  ; it is branch, where rcx == OPBuf_size & the last symbol in this buffer is '\0'
 .Skip:
 
         push    rax             ; save return value = shift in output buffer
@@ -130,7 +155,7 @@ MyPrint:
         add     rsp, 40         ; restore stack
         pop     rax             ; restore return value = shift in output buffer
 
-        cmp     byte [OverflowFlag], 1  ; if
+        cmp     byte [OF], 1  ; if
         je      .Next
 
         ; restore Nonvolatile registers
@@ -149,4 +174,25 @@ MyPrint:
         call    printf
 
         push    rbx
+        ret
+
+Sym_OF:
+        jmp     .Drop
+
+Spec:
+        jmp     .Drop
+
+Slash:
+        jmp     .Drop
+
+DefaultType:
+        ; restore Nonvolatile registers
+        pop     r13
+        pop     rbx
+        pop     rsi
+        pop     rdi
+        pop     rbp
+
+        ; write fatal err situation
+
         ret
