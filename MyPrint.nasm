@@ -15,7 +15,7 @@ OPBuf_size      equ  8
         mov     r13, rbx        ; save
 
         mov     byte [rel OF],   0
-        mov     byte [rel Type], 0
+        mov     byte [rel Type], 5
 
         %%Next: mov     bl, byte [rsi]
 
@@ -182,7 +182,10 @@ DefaultType:
         add     rsp, 40         ; restore stack
 
         ; restore Nonvolatile registers
+        pop     r15
+        pop     r14
         pop     r13
+        pop     r12
         pop     rbx
         pop     rsi
         pop     rdi
