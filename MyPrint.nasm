@@ -1,7 +1,5 @@
 ; Simple Print version, which can analyze and output only text string without specifiers
 
-default rel
-
 extern GetStdHandle
 extern WriteFile
 extern printf
@@ -16,7 +14,8 @@ OPBuf_size      equ  8
         mov     rdx, rsi        ; save str position
         mov     r13, rbx        ; save
 
-        mov     byte [OF], 0
+        mov     byte [rel OF],   0
+        mov     byte [rel Type], 0
 
 %%Next: mov     bl, byte [rsi]
 
@@ -36,13 +35,13 @@ OPBuf_size      equ  8
         cmp     rcx, OPBuf_size
         jb      %%Next
 
-        mov     byte [OF], 1
+        mov     byte [rel OF], 1
         jmp     %%Break
 
-%%Spec: mov     byte [Type], 1
+%%Spec: mov     byte [rel Type], 1
         jmp     %%Break
 
-%%Slash:mov     byte [Type], 2
+%%Slash:mov     byte [rel Type], 2
 
 %%Break:
         mov     rbx, r13
@@ -83,7 +82,10 @@ MyPrint:
         push    rdi
         push    rsi
         push    rbx
+        push    r12
         push    r13
+        push    r14
+        push    r15
         ; We must end our program with old rsp to save it
         ; We must implement this: push    r11 ; if we will use this registers
 
@@ -103,31 +105,14 @@ Next:   xor     r12, r12        ; len of cur buffer
 
         rep     movsb           ; copy part of format string in output buffer
 
-        jmp     DefaultType
-
-Sym_OF: xor     rcx, rcx
-        mov     cl, byte [OPBuf]
-        add     rcx, r12
-        cmp     r12, 0   ; check end of string, last byte must be equal zero
-        jne     Skip
-
-        mov     byte [OF], 0  ; it is branch, where rcx == OPBuf_size & the last symbol in this buffer is '\0'
-Skip:
-
-        push    rax             ; save return value = shift in output buffer
-        ; "push    rbx" is optional, because rbx is one of the volatile registers which will be save in functions GetStdHandle and WriteFile
+Sym_OF:
+        mov     r13, rax         ; save return value = shift in output buffer
         sub     rsp, 40         ; allocate Shadow Space
 
         mov     rcx, -11
         call    GetStdHandle
 
         mov     rcx, rax        ; put descriptor
-
-        add     rsp, 40         ; restore stack
-        pop     rax             ; restore return value = shift in output buffer
-        push    rax             ; save shift in output buffer
-        sub     rsp, 40         ; allocate Shadow Space
-
         mov     rdx, OPBuf      ; buffer
         mov     r8, r12         ; len
         xor     r9, r9
@@ -135,13 +120,16 @@ Skip:
         call    WriteFile       ; display
 
         add     rsp, 40         ; restore stack
-        pop     rax             ; restore return value = shift in output buffer
+        mov     rax, r13        ; restore return value = shift in output buffer
 
-        cmp     byte [OF], 1  ; if
+        cmp     byte [rel OF], 1
         je      Next
 
         ; restore Nonvolatile registers
+        pop     r15
+        pop     r14
         pop     r13
+        pop     r12
         pop     rbx
         pop     rsi
         pop     rdi
