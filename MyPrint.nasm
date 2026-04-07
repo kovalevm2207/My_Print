@@ -37,6 +37,7 @@ OPBuf_size      equ  8
         jb      %%Next
 
         mov     byte [OF], 1
+        jmp     %%Break
 
 %%Spec: mov     byte [Type], 1
         jmp     %%Break
