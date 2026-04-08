@@ -149,13 +149,13 @@ Drop:
         mov     r8,  qword [rsp+24]
         mov     r9,  qword [rsp+32]
 
-        mov     qword [rel MyPrintRetVal], rax
-        pop     rbx
-
-        call    printf
-
-        push    rbx
-        mov     rax, qword [rel MyPrintRetVal]
+        ;mov     qword [rel MyPrintRetVal], rax
+        ;pop     rbx
+        ;
+        ;call    printf
+        ;
+        ;push    rbx
+        ;mov     rax, qword [rel MyPrintRetVal]
 
         ret
 
@@ -272,7 +272,7 @@ SlashTable:
 ; Test 30: Multiple backslashes               --> \\\\\\
 ; Test 36: Escape sequence at buffer boundary --> 1234567\\t
 ; Test 42: Long string with escapes           --> Start\tMiddle\nEnd\r\b\t\\\"\'
-; Test 43:
-; Test 44:
+; Test 43: Very long string                   --> This is a very long string with multiple\t\nescape\nsequences\rto\btest\fthe\vbuffer\amanagement\\\"\'
+; Test 44: Mix of normal and special          --> ABC\tDEF\nGHI\rJKL\bMNO\\PQR\"STU\'VWX
 ; Test 47: Backslash at end of string         --> Hello World\\
 ; Test 48: Empty escapes                      --> \\a\\b\\t\\n\\v\\f\\r\\e\\\\\\\'\\\"
