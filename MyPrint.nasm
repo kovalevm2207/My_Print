@@ -264,3 +264,15 @@ SlashTable:
                  db 9   ; 't'
         times 1  db 0
                  db 11  ; 'v'
+
+; They don't work:
+
+; Test 28: Backslash in middle                --> Hello\\World
+; Test 29: Backslash at end                   --> Hello\\
+; Test 30: Multiple backslashes               --> \\\\\\
+; Test 36: Escape sequence at buffer boundary --> 1234567\\t
+; Test 42: Long string with escapes           --> Start\tMiddle\nEnd\r\b\t\\\"\'
+; Test 43:
+; Test 44:
+; Test 47: Backslash at end of string         --> Hello World\\
+; Test 48: Empty escapes                      --> \\a\\b\\t\\n\\v\\f\\r\\e\\\\\\\'\\\"
