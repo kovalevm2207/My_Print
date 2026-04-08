@@ -4,18 +4,16 @@ extern GetStdHandle
 extern WriteFile
 extern printf
 
-OPBuf_size      equ  8
-
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ; Read and count in rcx number of string's symbols, while we don't find '%' or '\0'
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 %macro  COUNT_LEN_FOR_COPY_IN_OPBuf 0
-        xor     rcx, rcx
+        mov     rcx, r12
         mov     rdx, rsi        ; save str position
         mov     r13, rbx        ; save
 
-        mov     byte [rel OF],   0
-        mov     byte [rel Type], 5
+        mov     byte [rel RF],   0
+        mov     byte [rel Type], 0
 
         %%Next: mov     bl, byte [rsi]
 
@@ -35,7 +33,7 @@ OPBuf_size      equ  8
                 cmp     rcx, OPBuf_size
                 jb      %%Next
 
-                mov     byte [rel OF], 1
+                mov     byte [rel RF], 1
                 jmp     %%Break
 
         %%Spec: mov     byte [rel Type], 1
@@ -94,12 +92,14 @@ MyPrint:
 
 Next:   xor     r12, r12        ; len of cur buffer
         ; move part of format string to OPBuf
+BeforeSlash:
         mov     rsi, [rbp+16]   ; start of format string
         add     rsi, rbx        ; rsi = ptr in format string = address of start + shift, which equals number of processed symbols
         mov     rdi, OPBuf
+        add     rdi, r12
         COUNT_LEN_FOR_COPY_IN_OPBuf ; set: rcx = num of symbols to copy
 
-        add     rax, rcx        ; update return value = shift in output buffer
+        add     rax, rcx        ; update return value
         add     rbx, rcx        ; update shift in format string
         add     r12, rcx        ; update len of cur buffer
 
@@ -109,8 +109,9 @@ Next:   xor     r12, r12        ; len of cur buffer
         cmp     rcx, 2
         ja      DefaultType
 
+        shl     rcx, 8
         lea     rdx, [rel TypeJmpTable]
-        jmp     [rdx + rcx*8]
+        jmp     [rdx + rcx]
 
 Drop:
         mov     r13, rax         ; save return value = shift in output buffer
@@ -129,7 +130,7 @@ Drop:
         add     rsp, 40         ; restore stack
         mov     rax, r13        ; restore return value = shift in output buffer
 
-        cmp     byte [rel OF], 1
+        cmp     byte [rel RF], 1
         je      Next
 
         ; restore Nonvolatile registers
@@ -161,8 +162,28 @@ Drop:
 Spec:
         jmp     Drop
 
-Slash:
-        jmp     Drop
+Slash:  ; for all this variants we need only 1 byte of memory
+        cmp     r12, OPBuf_size
+        jb      WSO     ; write slash operator
+
+                mov     byte [rel RF], 1
+                jmp     Drop
+
+    WSO:xor     rcx, rcx
+        mov     cl, byte [rsi+1] ; skip '\'
+        cmp     cl, 119 ; <-- maximum ASCII code of special symbols
+        ja      DefaultType                                            ; TO DO: make special err func
+
+        lea     rdx, [rel SlashTable]
+        mov     cl, byte [rdx + rcx]
+        cmp     cl, 0   ; if it is wrong symbol in Slash Table it equals zero
+        je      DefaultType
+
+        mov     byte [rdi + 1], cl
+        inc     r12
+        add     rbx, 2
+
+        jmp     BeforeSlash
 
 DefaultType:
         ; write fatal err situation
@@ -197,14 +218,15 @@ DefaultType:
 section .bss
 
 OPBuf:  resb OPBuf_size
+OPBuf_size      equ  8
 
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 section .data
 
 MyPrintRetVal   dq 0
 
-OF    db 0
-Type  db 0
+RF              db 0    ; repeat flag
+Type            db 0
 
 TypeErrMsg      db "Type err", 10, 0
 MsgSize        equ $ - TypeErrMsg
@@ -213,3 +235,32 @@ TypeJmpTable:
         dq      Drop
         dq      Spec
         dq      Slash
+
+; the most useful escape-sequence for beginning:
+;Symbol:      'a', 'b', 't', 'n', 'v', 'f', 'r', 'e', '\\', '\'', '\"'
+;ASCII code:   97,  98, 116, 110, 118, 102, 114, 101,   92,   39,   34
+;Byte:          7,   8,   9,  10,  11,  12,  13,  27,   92,   39,   34
+        ;       _______ maximum ASCII code of special symbols _____/
+section .data
+
+SlashTable:
+        times 34 db 0
+                 db 34  ; '"'
+        times 4  db 0
+                 db 39  ; '\''
+        times 52 db 0
+                 db 92  ; '\\'
+        times 4  db 0
+                 db 7   ; 'a'
+                 db 8   ; 'b'
+        times 2  db 0
+                 db 27  ; 'e'
+                 db 12  ; 'f'
+        times 7  db 0
+                 db 10  ; 'n'
+        times 3  db 0
+                 db 13  ; 'r'
+        times 1  db 0
+                 db 9   ; 't'
+        times 1  db 0
+                 db 11  ; 'v'
