@@ -109,7 +109,7 @@ BeforeSlash:
         cmp     rcx, 2
         ja      DefaultType
 
-        shl     rcx, 8
+        shl     rcx, 3
         lea     rdx, [rel TypeJmpTable]
         jmp     [rdx + rcx]
 
@@ -217,8 +217,8 @@ DefaultType:
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 section .bss
 
-OPBuf:  resb OPBuf_size
 OPBuf_size      equ  8
+OPBuf:  resb OPBuf_size
 
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 section .data

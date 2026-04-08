@@ -16,9 +16,9 @@ const struct
     const char* const Format;
 } Tests[] =
 {
-    {"clear format string", "Mike\n"},
+    {"clear format string", "\t\nMike\b\n"},
     {"special situation","12345678\n"},
-    {"clear format string and check drop buffer", "\tMike- the best engineer in the world\n"}
+    {"clear format string and check drop buffer", "\tMike- the best engineer in the world\n\n"}
 };
 
 const size_t NumOfTests = sizeof(Tests)/sizeof(Tests[0]);
