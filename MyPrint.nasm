@@ -94,6 +94,7 @@ AfterWrongPercent:
         add     rsi, rbx        ; rsi = ptr in format string = address of start + shift, which equals number of processed symbols
         mov     rdi, OPBuf
         add     rdi, r12
+AfterCharacter:
         COUNT_LEN_FOR_COPY_IN_OPBuf ; set: rcx = num of symbols to copy
 
         add     rax, rcx        ; update return value
@@ -155,25 +156,57 @@ Drop:
 
 ; in this branch we have free registers: rcx, rdx
 ; r14 - number of argument, start value = 0 (format string)
+; [rsi] = '%'
+; rdi   - first free position in output buffer
 Percent:
+        ; /--------------- rcx = 00 00 00 **
         movzx   rcx, byte [rsi+1]        ; cl = opcode of after percent symbol
-        shl     cl, 3
+        shl     rcx, 3                   ; rcx*8 - because we save our labels with 8 shift (qword)
         lea     rdx, [rel JmpTable]
-        mov     rcx, qword [rdx + rcx]
+        mov     rcx, qword [rdx + rcx]   ; rcx = *(JmTable + rxc * 8)
 
         cmp     rcx, 0                  ; if we have wrong specifier we should skip him
         jne     Correct
 
                 add     rbx, 2          ; skip  % and wrong specifier
                 jmp     AfterWrongPercent
-Correct:
-        jmp     [rdx+rcx]
+    Correct:
+        add     rsi, 2                  ; '%' 'c' '*'
+        jmp     rcx                     ;          ^
+                                        ;    rsi _/
 
 case_Binary:
+        jmp     Drop
 case_Character:
+        ; in this case we need only one free byte in OPBuf
+        cmp     r12, OPBuf_size
+        jb      WriteCharacter
+
+                mov     byte [rel RF], 1        ; if we don't have memory -> drop buffer
+                jmp     Drop
+    WriteCharacter:
+        inc     r14             ; increment argument counter
+        push    rsi             ; save position in format string
+        push    r14             ; save number of argument
+
+        shl     r14, 3
+        mov     rsi, rbp
+        add     rsi, r14
+        add     rsi, 16          ; ptr on argument
+        movsb   ;[rdi], [rbp+r14+8]
+
+        pop     r14
+        pop     rsi
+        inc     r12
+        inc     rax
+
+        jmp     AfterCharacter
 case_Float:
+        jmp     Drop
 case_Octal:
+        jmp     Drop
 case_String:
+        jmp     Drop
 case_Hex:
         jmp     Drop
 
@@ -209,7 +242,7 @@ case_Hex:
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 section .bss
 
-OPBuf_size      equ  8
+OPBuf_size      equ  256
 OPBuf:  resb OPBuf_size
 
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -224,8 +257,9 @@ PF              db 0    ; percent flag
 ;MsgSize        equ $ - TypeErrMsg
 
 JmpTable:
-times 'b'-1     dq 0                    ; ... -  a
+times 'b'       dq 0                    ; ... -  a
                 dq case_Binary          ; b
+Character:
                 dq case_Character       ; c
 times 'f'-'c'-1 dq 0                    ; d, e
                 dq case_Float           ; f
