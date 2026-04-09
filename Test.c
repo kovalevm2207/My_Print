@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <assert.h>
 
-extern int MyPrint(const char* const format);
+extern int MyPrint(const char* const format, ...);
 
 #define GREEN   "\033[32m"
 #define RED     "\033[31m"
@@ -97,14 +97,20 @@ const struct
     {"Only backslash", "\\"},
     {"Backslash at end of string", "Hello World\\"},
     {"Empty escapes", "\\a\\b\\t\\n\\v\\f\\r\\e\\\\\\\'\\\""},
+
 };
 
 const size_t NumOfTests = sizeof(Tests)/sizeof(Tests[0]);
 
 int main()
 {
-    for (int i = 0; i < NumOfTests; i++)
-        TestFunc(Tests[i].TestType, Tests[i].Format, i);
+     for (int i = 0; i < NumOfTests; i++)
+         TestFunc(Tests[i].TestType, Tests[i].Format, i);
+
+    int res = MyPrint("First character a = %c bananaaaaaaaaaaa\n", 'a');
+    printf("res = %d\n", res);
+    int res1 = printf("First character a = %c bananaaaaaaaaaaa\n", 'a');
+    printf("res = %d\n", res1);
     return 0;
 }
 

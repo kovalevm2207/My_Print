@@ -8,11 +8,11 @@ extern printf
 ; Read and count in rcx number of string's symbols, while we don't find '%' or '\0'
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 %macro  COUNT_LEN_FOR_COPY_IN_OPBuf 0
-        mov     rcx, r12
+        xor     rcx, rcx
         mov     rdx, rsi        ; save str position
         mov     r13, rbx        ; save
 
-        mov     byte [rel RF],   0
+        mov     byte [rel RF], 0
         mov     byte [rel PF], 0
 
         %%Next: mov     bl, byte [rsi]
@@ -25,11 +25,12 @@ extern printf
 
                 inc     rcx
                 inc     rsi
-                xor     bl, bl
 
                 cmp     rcx, OPBuf_size
                 jb      %%Next
 
+                dec     rsi
+                dec     rcx
                 mov     byte [rel RF], 1
                 jmp     %%Break
 
@@ -165,12 +166,14 @@ Percent:
         lea     rdx, [rel JmpTable]
         mov     rcx, qword [rdx + rcx]   ; rcx = *(JmTable + rxc * 8)
 
+        add     rbx, 2                  ; skip  % and  specifier
+
         cmp     rcx, 0                  ; if we have wrong specifier we should skip him
         jne     Correct
 
-                add     rbx, 2          ; skip  % and wrong specifier
                 jmp     AfterWrongPercent
     Correct:
+        ; update position in format string for all variants of specifiers
         add     rsi, 2                  ; '%' 'c' '*'
         jmp     rcx                     ;          ^
                                         ;    rsi _/
@@ -186,6 +189,7 @@ case_Character:
                 jmp     Drop
     WriteCharacter:
         inc     r14             ; increment argument counter
+        ; I think it will be faster then mov to other registers or make back combination of mathematical conversations
         push    rsi             ; save position in format string
         push    r14             ; save number of argument
 
@@ -193,12 +197,13 @@ case_Character:
         mov     rsi, rbp
         add     rsi, r14
         add     rsi, 16          ; ptr on argument
-        movsb   ;[rdi], [rbp+r14+8]
+        movsb   ;[rdi], [rbp+r14+16]
 
-        pop     r14
-        pop     rsi
-        inc     r12
-        inc     rax
+        pop     r14             ; restore number of argument
+        pop     rsi             ; restore position in format string
+
+        inc     r12             ; position in OPBuf
+        inc     rax             ; increment return value, number of characters
 
         jmp     AfterCharacter
 case_Float:
@@ -242,7 +247,7 @@ case_Hex:
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 section .bss
 
-OPBuf_size      equ  256
+OPBuf_size      equ  32
 OPBuf:  resb OPBuf_size
 
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
