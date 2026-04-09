@@ -1,4 +1,4 @@
-; Simple Print version, which can analyze and output only text string without %c
+; Simple Print version, which can analyze and output only text string without %cr
 
 extern GetStdHandle
 extern WriteFile
@@ -15,7 +15,11 @@ extern printf
         mov     byte [rel RF], 0
         mov     byte [rel PF], 0
 
-        %%Next: mov     bl, byte [rsi]
+        %%Next:
+                mov     bl, byte [rsi]
+
+                cmp     rcx, OPBuf_size
+                je      %%case_OverFlow
 
                 cmp     bl, '%'
                 je      %%Spec
@@ -26,15 +30,14 @@ extern printf
                 inc     rcx
                 inc     rsi
 
-                cmp     rcx, OPBuf_size
-                jb      %%Next
+                jmp     %%Next
 
-                dec     rsi
-                dec     rcx
+        %%case_OverFlow:
                 mov     byte [rel RF], 1
                 jmp     %%Break
 
-        %%Spec: mov     byte [rel PF], 1
+        %%Spec:
+                mov     byte [rel PF], 1
 
         %%Break:
         mov     rbx, r13
@@ -88,7 +91,8 @@ MyPrint:
         xor     rbx, rbx        ; shift in format string = NULL
         xor     r14, r14        ; set start value for argument counter
 
-Next:   xor     r12, r12        ; len of cur buffer
+Next:
+        xor     r12, r12        ; len of cur buffer
         ; move part of format string to OPBuf
 AfterWrongPercent:
         mov     rsi, [rbp+16]   ; start of format string
@@ -110,7 +114,7 @@ AfterCharacter:
         je      Percent
 
 Drop:
-        mov     r13, rax         ; save return value = shift in output buffer
+        mov     r13, rax        ; save return value = shift in output buffer
         sub     rsp, 40         ; allocate Shadow Space
 
         mov     rcx, -11
@@ -166,7 +170,6 @@ Percent:
         lea     rdx, [rel JmpTable]
         mov     rcx, qword [rdx + rcx]   ; rcx = *(JmTable + rxc * 8)
 
-        add     rbx, 2                  ; skip  % and  specifier
 
         cmp     rcx, 0                  ; if we have wrong specifier we should skip him
         jne     Correct
@@ -174,9 +177,7 @@ Percent:
                 jmp     AfterWrongPercent
     Correct:
         ; update position in format string for all variants of specifiers
-        add     rsi, 2                  ; '%' 'c' '*'
-        jmp     rcx                     ;          ^
-                                        ;    rsi _/
+        jmp     rcx
 
 case_Binary:
         jmp     Drop
@@ -184,10 +185,13 @@ case_Character:
         ; in this case we need only one free byte in OPBuf
         cmp     r12, OPBuf_size
         jb      WriteCharacter
-
                 mov     byte [rel RF], 1        ; if we don't have memory -> drop buffer
                 jmp     Drop
     WriteCharacter:
+        add     rbx, 2                  ; skip  % and  specifier
+        add     rsi, 2                  ; '%' 'c' '*'
+                                        ;          ^
+                                        ;    rsi _/
         inc     r14             ; increment argument counter
         ; I think it will be faster then mov to other registers or make back combination of mathematical conversations
         push    rsi             ; save position in format string
