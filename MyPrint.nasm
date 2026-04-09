@@ -13,15 +13,12 @@ extern printf
         mov     r13, rbx        ; save
 
         mov     byte [rel RF],   0
-        mov     byte [rel Type], 0
+        mov     byte [rel PF], 0
 
         %%Next: mov     bl, byte [rsi]
 
                 cmp     bl, '%'
                 je      %%Spec
-
-                cmp     bl, '\'
-                je      %%Slash
 
                 cmp     bl, 0           ; end of format string
                 je      %%Break
@@ -36,10 +33,7 @@ extern printf
                 mov     byte [rel RF], 1
                 jmp     %%Break
 
-        %%Spec: mov     byte [rel Type], 1
-                jmp     %%Break
-
-        %%Slash:mov     byte [rel Type], 2
+        %%Spec: mov     byte [rel PF], 1
 
         %%Break:
         mov     rbx, r13
@@ -57,13 +51,15 @@ global MyPrint
 ; r12 -  len of cur buffer
 ; rbp + 8  - ptr on return address
 ; rbp + 16 - ptr on first symbol of format string
+; r13 - for different saves
+; r14 - номер аргумента
 
 ; rcx - using as a counter in cycles
 ; rsi - source in functions, shows the position in format string
 ; rdi - destination, shaws the positions in output buffer
 
 ; remaining Volatile-registers:
-;       r13 r14 r15
+;       r15
 ;       xmm6 - xmm15
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 MyPrint:
@@ -89,10 +85,11 @@ MyPrint:
 
         xor     rax, rax        ; return value = NULL
         xor     rbx, rbx        ; shift in format string = NULL
+        xor     r14, r14        ; set start value for argument counter
 
 Next:   xor     r12, r12        ; len of cur buffer
         ; move part of format string to OPBuf
-BeforeSlash:
+AfterWrongPercent:
         mov     rsi, [rbp+16]   ; start of format string
         add     rsi, rbx        ; rsi = ptr in format string = address of start + shift, which equals number of processed symbols
         mov     rdi, OPBuf
@@ -105,13 +102,10 @@ BeforeSlash:
 
         rep     movsb           ; copy part of format string in output buffer
 
-        movzx   rcx, byte [rel Type]
-        cmp     rcx, 2
-        ja      DefaultType
-
-        shl     rcx, 3
-        lea     rdx, [rel TypeJmpTable]
-        jmp     [rdx + rcx]
+        mov     cl, byte [rel PF]
+        cmp     cl, 1
+        ;ja      DefaultType
+        je      Percent
 
 Drop:
         mov     r13, rax         ; save return value = shift in output buffer
@@ -159,60 +153,58 @@ Drop:
 
         ret
 
-Spec:
+; in this branch we have free registers: rcx, rdx
+; r14 - number of argument, start value = 0 (format string)
+Percent:
+        movzx   rcx, byte [rsi+1]        ; cl = opcode of after percent symbol
+        shl     cl, 3
+        lea     rdx, [rel JmpTable]
+        mov     rcx, qword [rdx + rcx]
+
+        cmp     rcx, 0                  ; if we have wrong specifier we should skip him
+        jne     Correct
+
+                add     rbx, 2          ; skip  % and wrong specifier
+                jmp     AfterWrongPercent
+Correct:
+        jmp     [rdx+rcx]
+
+case_Binary:
+case_Character:
+case_Float:
+case_Octal:
+case_String:
+case_Hex:
         jmp     Drop
 
-Slash:  ; for all this variants we need only 1 byte of memory
-        cmp     r12, OPBuf_size
-        jb      WSO     ; write slash operator
-
-                mov     byte [rel RF], 1
-                jmp     Drop
-
-    WSO:xor     rcx, rcx
-        mov     cl, byte [rsi+1] ; skip '\'
-        cmp     cl, 119 ; <-- maximum ASCII code of special symbols
-        ja      DefaultType                                            ; TO DO: make special err func
-
-        lea     rdx, [rel SlashTable]
-        mov     cl, byte [rdx + rcx]
-        cmp     cl, 0   ; if it is wrong symbol in Slash Table it equals zero
-        je      DefaultType
-
-        mov     byte [rdi + 1], cl
-        inc     r12
-        add     rbx, 2
-
-        jmp     BeforeSlash
-
-DefaultType:
-        ; write fatal err situation
-        sub     rsp, 40         ; allocate Shadow Space
-
-        mov     rcx, -11
-        call    GetStdHandle
-
-        mov     rcx, rax        ; put descriptor
-
-        mov     rdx, TypeErrMsg ; buffer
-        mov     r8, MsgSize         ; len
-        xor     r9, r9
-        mov     qword [rsp+32], 0
-        call    WriteFile       ; display
-
-        add     rsp, 40         ; restore stack
-
-        ; restore Nonvolatile registers
-        pop     r15
-        pop     r14
-        pop     r13
-        pop     r12
-        pop     rbx
-        pop     rsi
-        pop     rdi
-        pop     rbp
-
-        ret
+;DefaultType:
+;        ; write fatal err situation
+;        sub     rsp, 40         ; allocate Shadow Space
+;
+;        mov     rcx, -11
+;        call    GetStdHandle
+;
+;        mov     rcx, rax        ; put descriptor
+;
+;        mov     rdx, TypeErrMsg ; buffer
+;        mov     r8, MsgSize         ; len
+;        xor     r9, r9
+;        mov     qword [rsp+32], 0
+;        call    WriteFile       ; display
+;
+;        add     rsp, 40         ; restore stack
+;
+;        ; restore Nonvolatile registers
+;        pop     r15
+;        pop     r14
+;        pop     r13
+;        pop     r12
+;        pop     rbx
+;        pop     rsi
+;        pop     rdi
+;        pop     rbp
+;
+;        ret
 
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 section .bss
@@ -226,53 +218,21 @@ section .data
 MyPrintRetVal   dq 0
 
 RF              db 0    ; repeat flag
-Type            db 0
+PF              db 0    ; percent flag
 
-TypeErrMsg      db "Type err", 10, 0
-MsgSize        equ $ - TypeErrMsg
+;TypeErrMsg      db "Type err", 10, 0
+;MsgSize        equ $ - TypeErrMsg
 
-TypeJmpTable:
-        dq      Drop
-        dq      Spec
-        dq      Slash
-
-; the most useful escape-sequence for beginning:
-;Symbol:      'a', 'b', 't', 'n', 'v', 'f', 'r', 'e', '\\', '\'', '\"'
-;ASCII code:   97,  98, 116, 110, 118, 102, 114, 101,   92,   39,   34
-;Byte:          7,   8,   9,  10,  11,  12,  13,  27,   92,   39,   34
-        ;       _______ maximum ASCII code of special symbols _____/
-section .data
-
-SlashTable:
-        times 34 db 0
-                 db 34  ; '"'
-        times 4  db 0
-                 db 39  ; '\''
-        times 52 db 0
-                 db 92  ; '\\'
-        times 4  db 0
-                 db 7   ; 'a'
-                 db 8   ; 'b'
-        times 2  db 0
-                 db 27  ; 'e'
-                 db 12  ; 'f'
-        times 7  db 0
-                 db 10  ; 'n'
-        times 3  db 0
-                 db 13  ; 'r'
-        times 1  db 0
-                 db 9   ; 't'
-        times 1  db 0
-                 db 11  ; 'v'
-
-; They don't work:
-
-; Test 28: Backslash in middle                --> Hello\\World
-; Test 29: Backslash at end                   --> Hello\\
-; Test 30: Multiple backslashes               --> \\\\\\
-; Test 36: Escape sequence at buffer boundary --> 1234567\\t
-; Test 42: Long string with escapes           --> Start\tMiddle\nEnd\r\b\t\\\"\'
-; Test 43: Very long string                   --> This is a very long string with multiple\t\nescape\nsequences\rto\btest\fthe\vbuffer\amanagement\\\"\'
-; Test 44: Mix of normal and special          --> ABC\tDEF\nGHI\rJKL\bMNO\\PQR\"STU\'VWX
-; Test 47: Backslash at end of string         --> Hello World\\
-; Test 48: Empty escapes                      --> \\a\\b\\t\\n\\v\\f\\r\\e\\\\\\\'\\\"
+JmpTable:
+times 'b'-1     dq 0                    ; ... -  a
+                dq case_Binary          ; b
+                dq case_Character       ; c
+times 'f'-'c'-1 dq 0                    ; d, e
+                dq case_Float           ; f
+times 'o'-'f'-1 dq 0                    ; g, h, i, g, k, l, m, n
+                dq case_Octal           ; o
+times 's'-'o'-1 dq 0                    ; p, q, r
+                dq case_String          ; s
+times 'x'-'s'-1 dq 0                    ; t, u, v, w, x, y, z
+                dq case_Hex             ; x
+times 255-'x'-1 dq 0                    ; y - ...
