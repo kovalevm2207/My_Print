@@ -1,4 +1,4 @@
-; Simple Print version, which can analyze and output only text string without specifiers
+; Simple Print version, which can analyze and output only text string without %c
 
 extern GetStdHandle
 extern WriteFile
