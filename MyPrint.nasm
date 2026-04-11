@@ -16,14 +16,19 @@ extern printf
         mov     byte [rel PF], 0
 
         %%Next:
-                mov     bl, byte [rsi]
-
-                cmp     rcx, OPBuf_size
+                mov     rbx, rcx
+                add     rbx, r12
+                cmp     rbx, OPBuf_size
                 je      %%case_OverFlow
 
-                cmp     bl, '%'
-                je      %%Spec
+                mov     bl, byte [rsi]
 
+                cmp     byte [rel SF], 1
+                je      %%Skip
+
+                        cmp     bl, '%'
+                        je      %%Spec
+        %%Skip:
                 cmp     bl, 0           ; end of format string
                 je      %%Break
 
@@ -99,7 +104,7 @@ AfterWrongPercent:
         add     rsi, rbx        ; rsi = ptr in format string = address of start + shift, which equals number of processed symbols
         mov     rdi, OPBuf
         add     rdi, r12
-AfterCharacter:
+AfterPercent:
         COUNT_LEN_FOR_COPY_IN_OPBuf ; set: rcx = num of symbols to copy
 
         add     rax, rcx        ; update return value
@@ -110,8 +115,13 @@ AfterCharacter:
 
         mov     cl, byte [rel PF]
         cmp     cl, 1
-        ;ja      DefaultType
         je      Percent
+
+        cmp     byte [rel SF], 1
+        jne     Drop
+
+                cmp     byte [rel RF], 1
+                jne     BackToFormat
 
 Drop:
         mov     r13, rax        ; save return value = shift in output buffer
@@ -131,8 +141,15 @@ Drop:
         mov     rax, r13        ; restore return value = shift in output buffer
 
         cmp     byte [rel RF], 1
-        je      Next
+        jne     End
 
+                cmp byte [rel SF], 1
+                jne Next
+
+                jmp AfterPercent
+End:
+        cmp     byte [rel SF], 1
+        je      BackToFormat
         ; restore Nonvolatile registers
         pop     r15
         pop     r14
@@ -168,7 +185,7 @@ Percent:
         movzx   rcx, byte [rsi+1]        ; cl = opcode of after percent symbol
         shl     rcx, 3                   ; rcx*8 - because we save our labels with 8 shift (qword)
         lea     rdx, [rel JmpTable]
-        mov     rcx, qword [rdx + rcx]   ; rcx = *(JmTable + rxc * 8)
+        mov     rcx, qword [rdx+rcx]   ; rcx = *(JmTable + rxc * 8)
 
 
         cmp     rcx, 0                  ; if we have wrong specifier we should skip him
@@ -176,7 +193,6 @@ Percent:
 
                 jmp     AfterWrongPercent
     Correct:
-        ; update position in format string for all variants of specifiers
         jmp     rcx
 
 case_Binary:
@@ -197,8 +213,8 @@ case_Character:
         push    rsi             ; save position in format string
         push    r14             ; save number of argument
 
-        shl     r14, 3
         mov     rsi, rbp
+        shl     r14, 3
         add     rsi, r14
         add     rsi, 16          ; ptr on argument
         movsb   ;[rdi], [rbp+r14+16]
@@ -209,13 +225,43 @@ case_Character:
         inc     r12             ; position in OPBuf
         inc     rax             ; increment return value, number of characters
 
-        jmp     AfterCharacter
+        jmp     AfterPercent
 case_Float:
         jmp     Drop
 case_Octal:
         jmp     Drop
 case_String:
-        jmp     Drop
+        ; in this case we don't know, how much free bytes we need, so we will write this string, such a format string
+        ; only change source: rsi = absolute addr of symbol in format string    -->    rsi = absolute addr of symbol in argument string
+        ;                     rbx = shift in format string on symbol            -->    rbx = shift in argument string on symbol
+        add     rbx, 2          ; skip % and specifier in shift of format string
+        add     rsi, 2          ; skip % and specifier in format sting
+                                ; Those values we will use to continue
+
+        ; save params for work with format string
+        push    rsi
+        push    rbx
+
+        xor     rbx, rbx
+
+        inc     r14
+        push    r14
+
+        shl     r14, 3
+        mov     rsi, rbp
+        mov     rsi, [r14+rsi+16]      ; now: rsi = *(rbp+r14*8+16) = start address of string
+
+        pop     r14
+
+        mov     byte [rel SF], 1
+        jmp     AfterPercent
+
+    BackToFormat:
+        pop     rbx
+        pop     rsi
+        mov     byte [rel SF], 0
+
+        jmp     AfterWrongPercent
 case_Hex:
         jmp     Drop
 
@@ -261,6 +307,7 @@ MyPrintRetVal   dq 0
 
 RF              db 0    ; repeat flag
 PF              db 0    ; percent flag
+SF              db 0    ; string flag
 
 ;TypeErrMsg      db "Type err", 10, 0
 ;MsgSize        equ $ - TypeErrMsg
@@ -268,7 +315,6 @@ PF              db 0    ; percent flag
 JmpTable:
 times 'b'       dq 0                    ; ... -  a
                 dq case_Binary          ; b
-Character:
                 dq case_Character       ; c
 times 'f'-'c'-1 dq 0                    ; d, e
                 dq case_Float           ; f

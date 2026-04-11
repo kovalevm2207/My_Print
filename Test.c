@@ -104,11 +104,14 @@ const size_t NumOfTests = sizeof(Tests)/sizeof(Tests[0]);
 
 int main()
 {
-    for (int i = 0; i < NumOfTests; i++)
-        TestFunc(Tests[i].TestType, Tests[i].Format, i);
+    //for (int i = 0; i < NumOfTests; i++)
+    //    TestFunc(Tests[i].TestType, Tests[i].Format, i);
 
-    int res = MyPrint("First_character_a_=_%c_bananaaaa_%c_\n", 'a', 'b'); printf("res = %d\n", res);
-    int res1 = printf("First_character_a_=_%c_bananaaaa_%c_\n", 'a', 'b'); printf("res = %d\n", res1);
+    int res0 = MyPrint("First_character_a_=_%c_bananaaaa_%c_\n", 'a', 'b'); printf("res = %d\n",   res0);
+    int res1 =  printf("First_character_a_=_%c_bananaaaa_%c_\n", 'a', 'b'); printf("res = %d\n\n", res1);
+    int res2 = MyPrint("First_string_=_%s_%s_\n", "my", "banana");          printf("res = %d\n",   res2);
+    int res3 =  printf("First_string_=_%s_%s_\n", "my", "banana");          printf("res = %d\n\n", res3);
+
     return 0;
 }
 
