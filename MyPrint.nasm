@@ -117,12 +117,11 @@ MyPrint:
 Next:
         xor     r12, r12        ; len of cur buffer
         ; move part of format string to OPBuf
-AfterWrongPercent:
         mov     rsi, [rbp+16]   ; start of format string
         add     rsi, rbx        ; rsi = ptr in format string = address of start + shift, which equals number of processed symbols
         mov     rdi, OPBuf
         add     rdi, r12
-AfterPercent:
+    AfterPercent:
         COUNT_LEN_FOR_COPY_IN_OPBuf ; set: rcx = num of symbols to copy
 
         add     rax, rcx        ; update return value
@@ -134,26 +133,12 @@ AfterPercent:
         mov     cl, byte [rel PF]
         cmp     cl, 1
         je      Percent
-
-        cmp     byte [rel SF], 1
-        jne     Drop
-
-                cmp     byte [rel RF], 1
-                jne     BackToFormat
-
-Drop:
+    Drop:
         DROP_BUFFER
 
         cmp     byte [rel RF], 1
-        jne     End
+        je     Next
 
-                cmp byte [rel SF], 1
-                jne Next
-
-                jmp AfterPercent
-End:
-        cmp     byte [rel SF], 1
-        je      BackToFormat
         ; restore Nonvolatile registers
         pop     r15
         pop     r14
@@ -195,7 +180,9 @@ Percent:
         cmp     rcx, 0                  ; if we have wrong specifier we should skip him
         jne     Correct
 
-                jmp     AfterWrongPercent
+                inc     rsi
+                inc     rbx
+                jmp     AfterPercent
     Correct:
         jmp     rcx
 
@@ -250,7 +237,7 @@ case_Character:
                 mov     rdi, OPBuf
     WriteCharacter:
         inc     r14             ; increment argument counter
-        ; I think it will be faster then mov to other registers or make back combination of mathematical conversations
+
         push    rsi             ; save position in format string
         push    r14             ; save number of argument
 
@@ -279,34 +266,49 @@ case_String:
         ; in this case we don't know, how much free bytes we need, so we will write this string, such a format string
         ; only change source: rsi = absolute addr of symbol in format string    -->    rsi = absolute addr of symbol in argument string
         ;                     rbx = shift in format string on symbol            -->    rbx = shift in argument string on symbol
-        add     rbx, 2          ; skip % and specifier in shift of format string
+                                ; next values we will use to continue
         add     rsi, 2          ; skip % and specifier in format sting
-                                ; Those values we will use to continue
+        add     rbx, 2          ; skip % and specifier in shift of format string
 
+        inc     r14     ; update argument number
         ; save params for work with format string
         push    rsi
         push    rbx
 
-        xor     rbx, rbx
+        push    r14     ; save argument number
 
-        inc     r14
-        push    r14
+        xor     rbx, rbx        ; set shift in argument string
 
         shl     r14, 3
         mov     rsi, rbp
         mov     rsi, [r14+rsi+16]      ; now: rsi = *(rbp+r14*8+16) = start address of string
 
-        pop     r14
+        pop     r14     ; restore argument number
+        push    rsi     ; save start address of argument string
 
-        mov     byte [rel SF], 1
-        jmp     AfterPercent
+    .Next:
+        COUNT_LEN_FOR_COPY_IN_OPBuf
+        add     rax, rcx        ; update return value
+        add     rbx, rcx        ; update shift in format string
+        add     r12, rcx        ; update len of cur buffer
 
-    BackToFormat:
+        rep     movsb           ; copy part of format string in output buffer
+
+        cmp     byte [rel RF], 1
+        jne     .End
+                DROP_BUFFER
+                xor     r12, r12
+                mov     rsi, [rsp]
+                add     rsi, rbx
+                mov     rdi, OPBuf
+                add     rdi, r12
+                jmp     case_String.Next
+    .End:
+        add     rsp, 8         ; skip  saved start of address string
         pop     rbx
         pop     rsi
-        mov     byte [rel SF], 0
 
-        jmp     AfterWrongPercent
+        jmp     AfterPercent
 case_Hex:
         ; in this case we can't use rep movsb, so we should make an individual proc
         add     rbx, 2                  ;/////////////////////////////////////////////
@@ -363,7 +365,7 @@ case_Hex:
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 section .bss
 
-OPBuf_size      equ  4
+OPBuf_size      equ  128
 OPBuf:  resb OPBuf_size
 
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
