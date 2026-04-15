@@ -9,31 +9,29 @@ extern printf
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 %macro  COUNT_LEN_FOR_COPY_IN_OPBuf 0
         xor     rcx, rcx
-        mov     rdx, rsi        ; save str position
-        mov     r13, rbx        ; save
 
         mov     byte [rel RF], 0
         mov     byte [rel PF], 0
 
         %%Next:
-                mov     rbx, rcx
-                add     rbx, r12
-                cmp     rbx, OPBuf_size
+                mov     rdx, rcx
+                add     rdx, r12
+                cmp     rdx, OPBuf_size
                 je      %%case_OverFlow
 
-                mov     bl, byte [rsi]
+                mov     dl, byte [rsi]
 
                 cmp     byte [rel SF], 1
                 je      %%Skip
 
-                        cmp     bl, '%'
+                        cmp     dl, '%'
                         je      %%Spec
         %%Skip:
-                cmp     bl, 0           ; end of format string
+                cmp     dl, 0           ; end of format string
                 je      %%Break
 
+                movsb
                 inc     rcx
-                inc     rsi
 
                 jmp     %%Next
 
@@ -45,8 +43,11 @@ extern printf
                 mov     byte [rel PF], 1
 
         %%Break:
-        mov     rbx, r13
-        mov     rsi, rdx        ; restore str position
+
+        add     rax, rcx        ; update return value
+        add     rbx, rcx        ; update shift in format string
+        add     r12, rcx        ; update len of cur buffer
+
 %endmacro
 
 %macro DROP_BUFFER 0
@@ -124,12 +125,6 @@ Next:
     AfterPercent:
         COUNT_LEN_FOR_COPY_IN_OPBuf ; set: rcx = num of symbols to copy
 
-        add     rax, rcx        ; update return value
-        add     rbx, rcx        ; update shift in format string
-        add     r12, rcx        ; update len of cur buffer
-
-        rep     movsb           ; copy part of format string in output buffer
-
         mov     cl, byte [rel PF]
         cmp     cl, 1
         je      Percent
@@ -155,13 +150,13 @@ Next:
         mov     r8,  qword [rsp+24]
         mov     r9,  qword [rsp+32]
 
-        ;mov     qword [rel MyPrintRetVal], rax
+    ;    mov     qword [rel MyPrintRetVal], rax
         ;pop     rbx
         ;
         ;call    printf
         ;
         ;push    rbx
-        ;mov     rax, qword [rel MyPrintRetVal]
+    ;    mov     rax, qword [rel MyPrintRetVal]
 
         ret
 
@@ -288,11 +283,6 @@ case_String:
 
     .Next:
         COUNT_LEN_FOR_COPY_IN_OPBuf
-        add     rax, rcx        ; update return value
-        add     rbx, rcx        ; update shift in format string
-        add     r12, rcx        ; update len of cur buffer
-
-        rep     movsb           ; copy part of format string in output buffer
 
         cmp     byte [rel RF], 1
         jne     .End
