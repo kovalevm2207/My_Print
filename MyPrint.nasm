@@ -4,6 +4,27 @@ extern GetStdHandle
 extern WriteFile
 extern printf
 
+%macro PUSH_REGS 1-*
+    %rep %0
+        push    %1
+        %rotate 1
+    %endrep
+%endmacro
+
+%macro POP_REGS 1-*
+    %rep %0
+        %rotate -1
+        pop     %1
+    %endrep
+%endmacro
+
+%macro INC_REGS 1-*
+    %rep %0
+        inc     %1
+        %rotate 1
+    %endrep
+%endmacro
+
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ; Read and count in rcx number of string's symbols, while we don't find '%' or '\0'
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -66,17 +87,13 @@ extern printf
 %endmacro
 
 %macro CLEVER_DROP_BUFFER 0
-        push    r13
-        push    rcx
-        push    rdx
+        PUSH_REGS r13, rcx, rdx
 
         DROP_BUFFER
         xor     r12, r12
         mov     rdi, OPBuf
 
-        pop     rdx
-        pop     rcx
-        pop     r13
+        POP_REGS  r13, rcx, rdx
 %endmacro
 
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -112,13 +129,8 @@ MyPrint:
         push    rbp
         mov     rbp, rsp        ; return address is on rbp+8  position
                                 ; first argument is on rbp+16 position e.t.c.
-        push    rdi
-        push    rsi
-        push    rbx
-        push    r12
-        push    r13
-        push    r14
-        push    r15
+        PUSH_REGS rdi, rsi, rbx, r12, r13, r14, r15
+
         ; We must end our program with old rsp to save it
         ; We must implement this: push    r11 ; if we will use this registers
 
@@ -145,14 +157,7 @@ MyPrint:
         je     Next
 
         ; restore Nonvolatile registers
-        pop     r15
-        pop     r14
-        pop     r13
-        pop     r12
-        pop     rbx
-        pop     rsi
-        pop     rdi
-        pop     rbp
+        POP_REGS rbp, rdi, rsi, rbx, r12, r13, r14, r15
 
         ; restore args
         mov     rcx, qword [rsp+8 ]
@@ -231,13 +236,11 @@ case_Character:
         pop     r14             ; restore number of argument
         pop     rsi             ; restore position in format string
 
-        inc     rax             ; increment return value, number of characters
-        inc     r12             ; position in OPBuf
+        INC_REGS rax, r12               ; increment return value, number of characters ; position in OPBuf
         add     rbx, 2                  ; skip  % and  specifier
         add     rsi, 2                  ; '%' 'c' '*'
                                         ;          ^
                                         ;    rsi _/
-
         jmp     AfterPercent
 case_Float:
         jmp     Drop
@@ -304,9 +307,7 @@ case_Hex:
             .WriteZ:
                 mov     byte [rdi], '0'
 
-                inc     rax
-                inc     rdi
-                inc     r12
+                INC_REGS rax, rdi, r12
                 jmp     AfterPercent
     .Skip:
                                 ;          \/------- 1 letter = 4 bits ; bit_size(r13) = 64
@@ -327,8 +328,7 @@ case_Hex:
                 jb      case_Hex.Write
                         CLEVER_DROP_BUFFER
             .Write:
-                inc     rax
-                inc     r12
+                INC_REGS rax, r12
 
                 cmp     rdx, 10
                 jae     case_Hex.Letter
