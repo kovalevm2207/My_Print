@@ -49,6 +49,24 @@ extern printf
         mov     rsi, rdx        ; restore str position
 %endmacro
 
+%macro DROP_BUFFER 0
+        mov     r13, rax        ; save return value = shift in output buffer
+        sub     rsp, 40         ; allocate Shadow Space
+
+        mov     rcx, -11
+        call    GetStdHandle
+
+        mov     rcx, rax        ; put descriptor
+        mov     rdx, OPBuf      ; buffer
+        mov     r8, r12         ; len
+        xor     r9, r9
+        mov     qword [rsp+32], 0
+        call    WriteFile       ; display
+
+        add     rsp, 40         ; restore stack
+        mov     rax, r13        ; restore return value = shift in output buffer
+%endmacro
+
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 section .text
 
@@ -124,21 +142,7 @@ AfterPercent:
                 jne     BackToFormat
 
 Drop:
-        mov     r13, rax        ; save return value = shift in output buffer
-        sub     rsp, 40         ; allocate Shadow Space
-
-        mov     rcx, -11
-        call    GetStdHandle
-
-        mov     rcx, rax        ; put descriptor
-        mov     rdx, OPBuf      ; buffer
-        mov     r8, r12         ; len
-        xor     r9, r9
-        mov     qword [rsp+32], 0
-        call    WriteFile       ; display
-
-        add     rsp, 40         ; restore stack
-        mov     rax, r13        ; restore return value = shift in output buffer
+        DROP_BUFFER
 
         cmp     byte [rel RF], 1
         jne     End
@@ -195,19 +199,56 @@ Percent:
     Correct:
         jmp     rcx
 
-case_Binary:
-        jmp     Drop
+;---------------------------------------------------------------------------------------
+; ShowWord: выводит в текстовую видеопамять двоичное/восьмеричное/шестнадцатеричное
+; отображение, в зависимости от переданного параметра, числа
+; Входные параметры:     - mask               <--| may be some one of this is optional
+;                    rcx - shift for the mask <__|
+;                    rsi - ptr on the number (source)
+;                    rdi - dest
+; Ожидаемое состояние:
+; return value: += rax (number of the symbols we had displayed)
+;               += r12 (shift in OPBuf)
+;               += rdi (absolutely ptr in OPBuf) <------ ???
+; Испорченные регистры: rcx,
+;                       rdx -contains mask value
+;                       (also we can use r13, r15 for different saves)
+; Volatile-registers: rbp (ptr on arguments of format string)
+;                     rbx (shift in format string)
+;
+;---------------------------------------------------------------------------------------
+
+%macro ShowQWord 0
+        ; at first
+        ; make mask from rcx arg
+        mov     rdx, -1
+        mov     r13, 64
+        sub     r13, rcx
+        shl     rdx, r13
+
+        xor     r13, r13        ; r13 - counter
+        mov     r15, 64
+        shl     r15, rcx        ; r15 - num of itarate
+    %%Next:
+                push    rsi; save rsi = value
+                and     rsi, rdx                        ;
+                shr     rbx, rcx                        ; change mask
+                ; shift data from the high bytes to low bytes
+                shr     rsi, 64-rcx-r13
+
+        cmp     r13, r15
+        jb      %%Next
+
+%endmacro
+
 case_Character:
         ; in this case we need only one free byte in OPBuf
         cmp     r12, OPBuf_size
         jb      WriteCharacter
-                mov     byte [rel RF], 1        ; if we don't have memory -> drop buffer
-                jmp     Drop
+                DROP_BUFFER             ; if we don't have memory -> drop buffer
+                xor     r12, r12
+                mov     rdi, OPBuf
     WriteCharacter:
-        add     rbx, 2                  ; skip  % and  specifier
-        add     rsi, 2                  ; '%' 'c' '*'
-                                        ;          ^
-                                        ;    rsi _/
         inc     r14             ; increment argument counter
         ; I think it will be faster then mov to other registers or make back combination of mathematical conversations
         push    rsi             ; save position in format string
@@ -217,13 +258,17 @@ case_Character:
         shl     r14, 3
         add     rsi, r14
         add     rsi, 16          ; ptr on argument
-        movsb   ;[rdi], [rbp+r14+16]
+        movsb   ;[rdi++], [rsi = (rbp+r14+16)]
 
         pop     r14             ; restore number of argument
         pop     rsi             ; restore position in format string
 
-        inc     r12             ; position in OPBuf
         inc     rax             ; increment return value, number of characters
+        inc     r12             ; position in OPBuf
+        add     rbx, 2                  ; skip  % and  specifier
+        add     rsi, 2                  ; '%' 'c' '*'
+                                        ;          ^
+                                        ;    rsi _/
 
         jmp     AfterPercent
 case_Float:
@@ -263,6 +308,27 @@ case_String:
 
         jmp     AfterWrongPercent
 case_Hex:
+        ; in this case we can't use rep movsb, so we should make an individual proc
+        add     rbx, 2                  ;/////////////////////////////////////////////
+        add     rsi, 2                  ;
+                                        ;
+        push    rsi                     ;
+        push    rbx                     ;
+                                        ;
+        xor     rbx, rbx                ; see, for example, case_String
+                                        ;
+        inc     r14                     ;
+        push    r14                     ;
+                                        ;
+        shl     r14, 3                  ;
+        mov     rsi, rbp                ;
+        mov     rsi, [r14+rsi+16]       ;/////////////////////////////////////////////
+        ; now rsi = num_arg, which we will display
+
+        pop     r14
+
+        mov     rcx, 1      ; shift fot the mask, in case_Octal for example it will be 3 and in case_Hex 4
+
         jmp     Drop
 
 ;DefaultType:
@@ -297,7 +363,7 @@ case_Hex:
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 section .bss
 
-OPBuf_size      equ  32
+OPBuf_size      equ  4
 OPBuf:  resb OPBuf_size
 
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -313,8 +379,7 @@ SF              db 0    ; string flag
 ;MsgSize        equ $ - TypeErrMsg
 
 JmpTable:
-times 'b'       dq 0                    ; ... -  a
-                dq case_Binary          ; b
+times 'c'       dq 0                    ; ... -  a
                 dq case_Character       ; c
 times 'f'-'c'-1 dq 0                    ; d, e
                 dq case_Float           ; f
