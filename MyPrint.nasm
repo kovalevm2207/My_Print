@@ -21,12 +21,9 @@ extern printf
 
                 mov     dl, byte [rsi]
 
-                cmp     byte [rel SF], 1
-                je      %%Skip
+                cmp     dl, '%'
+                je      %%Spec
 
-                        cmp     dl, '%'
-                        je      %%Spec
-        %%Skip:
                 cmp     dl, 0           ; end of format string
                 je      %%Break
 
@@ -68,6 +65,20 @@ extern printf
         mov     rax, r13        ; restore return value = shift in output buffer
 %endmacro
 
+%macro CLEVER_DROP_BUFFER 0
+        push    r13
+        push    rcx
+        push    rdx
+
+        DROP_BUFFER
+        xor     r12, r12
+        mov     rdi, OPBuf
+
+        pop     rdx
+        pop     rcx
+        pop     r13
+%endmacro
+
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 section .text
 
@@ -80,7 +91,7 @@ global MyPrint
 ; rbp + 8  - ptr on return address
 ; rbp + 16 - ptr on first symbol of format string
 ; r13 - for different saves
-; r14 - номер аргумента
+; r14 - argument number
 
 ; rcx - using as a counter in cycles
 ; rsi - source in functions, shows the position in format string
@@ -115,13 +126,12 @@ MyPrint:
         xor     rbx, rbx        ; shift in format string = NULL
         xor     r14, r14        ; set start value for argument counter
 
-Next:
+  Next:
         xor     r12, r12        ; len of cur buffer
         ; move part of format string to OPBuf
         mov     rsi, [rbp+16]   ; start of format string
         add     rsi, rbx        ; rsi = ptr in format string = address of start + shift, which equals number of processed symbols
         mov     rdi, OPBuf
-        add     rdi, r12
     AfterPercent:
         COUNT_LEN_FOR_COPY_IN_OPBuf ; set: rcx = num of symbols to copy
 
@@ -182,47 +192,23 @@ Percent:
         jmp     rcx
 
 ;---------------------------------------------------------------------------------------
-; ShowWord: выводит в текстовую видеопамять двоичное/восьмеричное/шестнадцатеричное
-; отображение, в зависимости от переданного параметра, числа
-; Входные параметры:     - mask               <--| may be some one of this is optional
-;                    rcx - shift for the mask <__|
-;                    rsi - ptr on the number (source)
-;                    rdi - dest
-; Ожидаемое состояние:
-; return value: += rax (number of the symbols we had displayed)
-;               += r12 (shift in OPBuf)
-;               += rdi (absolutely ptr in OPBuf) <------ ???
-; Испорченные регистры: rcx,
-;                       rdx -contains mask value
-;                       (also we can use r13, r15 for different saves)
-; Volatile-registers: rbp (ptr on arguments of format string)
-;                     rbx (shift in format string)
-;
-;---------------------------------------------------------------------------------------
-
-%macro ShowQWord 0
-        ; at first
-        ; make mask from rcx arg
-        mov     rdx, -1
-        mov     r13, 64
-        sub     r13, rcx
-        shl     rdx, r13
-
-        xor     r13, r13        ; r13 - counter
-        mov     r15, 64
-        shl     r15, rcx        ; r15 - num of itarate
-    %%Next:
-                push    rsi; save rsi = value
-                and     rsi, rdx                        ;
-                shr     rbx, rcx                        ; change mask
-                ; shift data from the high bytes to low bytes
-                shr     rsi, 64-rcx-r13
-
-        cmp     r13, r15
-        jb      %%Next
-
-%endmacro
-
+ ; ShowWord: выводит в текстовую видеопамять двоичное/восьмеричное/шестнадцатеричное
+ ; отображение, в зависимости от переданного параметра, числа
+ ; Входные параметры:     - mask               <--| may be some one of this is optional
+ ;                    rcx - shift for the mask <__|
+ ;                    rsi - ptr on the number (source)
+ ;                    rdi - dest
+ ; Ожидаемое состояние:
+ ; return value: += rax (number of the symbols we had displayed)
+ ;               += r12 (shift in OPBuf)
+ ;               += rdi (absolutely ptr in OPBuf) <------ ???
+ ; Испорченные регистры: rcx,
+ ;                       rdx -contains mask value
+ ;                       (also we can use r13, r15 for different saves)
+ ; Volatile-registers: rbp (ptr on arguments of format string)
+ ;                     rbx (shift in format string)
+ ;
+ ;---------------------------------------------------------------------------------------
 case_Character:
         ; in this case we need only one free byte in OPBuf
         cmp     r12, OPBuf_size
@@ -231,9 +217,9 @@ case_Character:
                 xor     r12, r12
                 mov     rdi, OPBuf
     WriteCharacter:
-        inc     r14             ; increment argument counter
-
         push    rsi             ; save position in format string
+
+        inc     r14             ; increment argument counter
         push    r14             ; save number of argument
 
         mov     rsi, rbp
@@ -275,8 +261,7 @@ case_String:
         xor     rbx, rbx        ; set shift in argument string
 
         shl     r14, 3
-        mov     rsi, rbp
-        mov     rsi, [r14+rsi+16]      ; now: rsi = *(rbp+r14*8+16) = start address of string
+        mov     rsi, [r14+rbp+16]      ; now: rsi = *(rbp+r14*8+16) = start address of string
 
         pop     r14     ; restore argument number
         push    rsi     ; save start address of argument string
@@ -291,7 +276,6 @@ case_String:
                 mov     rsi, [rsp]
                 add     rsi, rbx
                 mov     rdi, OPBuf
-                add     rdi, r12
                 jmp     case_String.Next
     .End:
         add     rsp, 8         ; skip  saved start of address string
@@ -301,56 +285,69 @@ case_String:
         jmp     AfterPercent
 case_Hex:
         ; in this case we can't use rep movsb, so we should make an individual proc
-        add     rbx, 2                  ;/////////////////////////////////////////////
-        add     rsi, 2                  ;
-                                        ;
-        push    rsi                     ;
-        push    rbx                     ;
-                                        ;
-        xor     rbx, rbx                ; see, for example, case_String
-                                        ;
-        inc     r14                     ;
-        push    r14                     ;
-                                        ;
-        shl     r14, 3                  ;
-        mov     rsi, rbp                ;
-        mov     rsi, [r14+rsi+16]       ;/////////////////////////////////////////////
-        ; now rsi = num_arg, which we will display
+        add     rsi, 2
+        add     rbx, 2
 
+        inc     r14
+        push    r14
+
+        shl     r14, 3
+        mov     rdx, [r14+rbp+16]       ; rbx = number value
         pop     r14
+        mov     r15, rdx                ; r15 = saved number value
 
-        mov     rcx, 1      ; shift fot the mask, in case_Octal for example it will be 3 and in case_Hex 4
+        cmp     rdx, 0
+        jne     case_Hex.Skip
+                cmp     r12, OPBuf_size
+                jb      case_Hex.WriteZ
+                        CLEVER_DROP_BUFFER
+            .WriteZ:
+                mov     byte [rdi], '0'
 
-        jmp     Drop
+                inc     rax
+                inc     rdi
+                inc     r12
+                jmp     AfterPercent
+    .Skip:
+                                ;          \/------- 1 letter = 4 bits ; bit_size(r13) = 64
+        mov     r13, -1         ; r13 = ffff ffff ffff ffff  --- we need ---> r13 = f000 0000 0000 0000 - mask
+        shl     r13, 64-4       ; bit_size(r13) - log_2(16)
 
-;DefaultType:
-;        ; write fatal err situation
-;        sub     rsp, 40         ; allocate Shadow Space
-;
-;        mov     rcx, -11
-;        call    GetStdHandle
-;
-;        mov     rcx, rax        ; put descriptor
-;
-;        mov     rdx, TypeErrMsg ; buffer
-;        mov     r8, MsgSize         ; len
-;        xor     r9, r9
-;        mov     qword [rsp+32], 0
-;        call    WriteFile       ; display
-;
-;        add     rsp, 40         ; restore stack
-;
-;        ; restore Nonvolatile registers
-;        pop     r15
-;        pop     r14
-;        pop     r13
-;        pop     r12
-;        pop     rbx
-;        pop     rsi
-;        pop     rdi
-;        pop     rbp
-;
-;        ret
+        xor     rcx, rcx        ; counter
+        .Next:
+                mov     rdx, r15
+                and     rdx, r13
+                shl     rdx, cl
+                shr     rdx, 64-4
+
+                cmp     rdx, 0
+                je      case_Hex.Increment
+
+                cmp     r12, OPBuf_size
+                jb      case_Hex.Write
+                        CLEVER_DROP_BUFFER
+            .Write:
+                inc     rax
+                inc     r12
+
+                cmp     rdx, 10
+                jae     case_Hex.Letter
+                        add     rdx, '0'
+                        mov     byte [rdi], dl
+                        inc     rdi
+                        jmp     case_Hex.Increment
+            .Letter:
+                add     rdx, 'a'-10
+                mov     byte [rdi],dl
+                inc     rdi
+            .Increment:
+                add     rcx, 4
+
+                shr     r13, 4
+        cmp     rcx, 64
+        jb      case_Hex.Next
+
+        jmp     AfterPercent
 
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 section .bss
@@ -365,10 +362,6 @@ MyPrintRetVal   dq 0
 
 RF              db 0    ; repeat flag
 PF              db 0    ; percent flag
-SF              db 0    ; string flag
-
-;TypeErrMsg      db "Type err", 10, 0
-;MsgSize        equ $ - TypeErrMsg
 
 JmpTable:
 times 'c'       dq 0                    ; ... -  a
