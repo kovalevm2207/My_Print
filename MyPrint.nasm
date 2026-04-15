@@ -245,7 +245,77 @@ case_Character:
 case_Float:
         jmp     Drop
 case_Octal:
-        jmp     Drop
+        ; in this case we can't use rep movsb, so we should make an individual proc
+        add     rsi, 2
+        add     rbx, 2
+
+        inc     r14
+        push    r14
+
+        shl     r14, 3
+        mov     rdx, [r14+rbp+16]       ; rbx = number value
+        pop     r14
+        mov     r15, rdx                ; r15 = saved number value
+
+        cmp     rdx, 0
+        jne     case_Octal.Skip
+                cmp     r12, OPBuf_size
+                jb      case_Octal.WriteZ
+                        CLEVER_DROP_BUFFER
+            .WriteZ:
+                mov     byte [rdi], '0'
+
+                INC_REGS rax, rdi, r12
+                jmp     AfterPercent
+    .Skip:
+                                ;          \/------- 1 letter = 3 bits ; bit_size(r13) = 64 ==> 64/3 = [21,3]+ = 22 elements (last element contains only 1 bit)
+        mov     r13, -1         ; r13 = 1 777 777 777 777 777 777 777  --- we need ---> r13 = 1 000 000 000 000 000 000 000 - mask
+        shl     r13, 64-1       ; bit_size(r13) - 1; for the start mask
+
+        and     rdx, r13
+        cmp     rdx, 0
+        je      case_Octal.FirstZ
+                cmp     r12, OPBuf_size
+                jb      case_Octal.WriteFirst
+                        CLEVER_DROP_BUFFER
+            .WriteFirst:
+                mov     byte [rdi], '1'
+
+                INC_REGS rax, rdi, r12
+    .FirstZ:
+
+                                ;          \/------- 1 letter = 3 bits ; bit_size(r13) = 64 ==> 64/3 = [21,3]+ = 22 elements (last element contains only 1 bit)
+        mov     r13, -1         ; r13 = 1 777 777 777 777 777 777 777  --- we need ---> 0 700 000 000 000 000 000 000 - mask
+        shl     r13, 64-3       ; bit_size(r13) - log_2(8); for the start mask
+        shr     r13, 1          ; skip highest bit
+
+        mov     rcx, 1          ; counter
+        .Next:
+                mov     rdx, r15
+                and     rdx, r13
+                shl     rdx, cl
+                shr     rdx, 64-3
+
+                cmp     rdx, 0
+                je      case_Octal.Increment
+
+                cmp     r12, OPBuf_size
+                jb      case_Octal.Write
+                        CLEVER_DROP_BUFFER
+            .Write:
+                INC_REGS rax, r12
+
+                add     rdx, '0'
+                mov     byte [rdi], dl
+                inc     rdi
+            .Increment:
+                add     rcx, 3
+
+                shr     r13, 3
+        cmp     rcx, 64
+        jb      case_Octal.Next
+
+        jmp     AfterPercent
 case_String:
         ; in this case we don't know, how much free bytes we need, so we will write this string, such a format string
         ; only change source: rsi = absolute addr of symbol in format string    -->    rsi = absolute addr of symbol in argument string
