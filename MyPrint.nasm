@@ -1,5 +1,3 @@
-; Simple Print version, which can analyze and output only text string without %cr
-
 extern GetStdHandle
 extern WriteFile
 extern printf
@@ -194,26 +192,12 @@ Percent:
                 inc     rbx
                 jmp     AfterPercent
     Correct:
+        add     r14, 8             ; increment argument counter
+        add     rbx, 2                  ; skip  % and  specifier
+        add     rsi, 2                  ; '%' 'c' '*'
+                                        ;          ^
+                                        ;    rsi _/
         jmp     rcx
-
-;---------------------------------------------------------------------------------------
- ; ShowWord: выводит в текстовую видеопамять двоичное/восьмеричное/шестнадцатеричное
- ; отображение, в зависимости от переданного параметра, числа
- ; Входные параметры:     - mask               <--| may be some one of this is optional
- ;                    rcx - shift for the mask <__|
- ;                    rsi - ptr on the number (source)
- ;                    rdi - dest
- ; Ожидаемое состояние:
- ; return value: += rax (number of the symbols we had displayed)
- ;               += r12 (shift in OPBuf)
- ;               += rdi (absolutely ptr in OPBuf) <------ ???
- ; Испорченные регистры: rcx,
- ;                       rdx -contains mask value
- ;                       (also we can use r13, r15 for different saves)
- ; Volatile-registers: rbp (ptr on arguments of format string)
- ;                     rbx (shift in format string)
- ;
- ;---------------------------------------------------------------------------------------
 case_Character:
         ; in this case we need only one free byte in OPBuf
         cmp     r12, OPBuf_size
@@ -224,36 +208,19 @@ case_Character:
     WriteCharacter:
         push    rsi             ; save position in format string
 
-        inc     r14             ; increment argument counter
-        push    r14             ; save number of argument
-
         mov     rsi, rbp
-        shl     r14, 3
         add     rsi, r14
         add     rsi, 16          ; ptr on argument
         movsb   ;[rdi++], [rsi = (rbp+r14+16)]
 
-        pop     r14             ; restore number of argument
         pop     rsi             ; restore position in format string
 
         INC_REGS rax, r12               ; increment return value, number of characters ; position in OPBuf
-        add     rbx, 2                  ; skip  % and  specifier
-        add     rsi, 2                  ; '%' 'c' '*'
-                                        ;          ^
-                                        ;    rsi _/
+
         jmp     AfterPercent
 case_Decimal:
-        add     rsi, 2
-        add     rbx, 2
-
         push    rax     ; should save, because we will use division
-
-        inc     r14
-        push    r14
-
-        shl     r14, 3
         mov     rax, [r14+rbp+16]       ; rbx = number value
-        pop     r14
 
         ; check: have we got one free byte in output buffer?
         cmp     r12, OPBuf_size
@@ -319,23 +286,30 @@ case_Decimal:
 
         jmp  AfterPercent
 
+; Floating-point number structure:
+;       ------------------------------------
+;       |S| E (Exp) |     M (Mantissa)     |    <-- binary representation
+;       |1| 11 bit  |        52 bit        |
+;       ------------------------------------
+;
+; val = (-1)^S * 1.M_d * 2^(E_d)    <-- *_d - decimal representation
+;(You can see, how to convert from Binary to Decimal, for example in case_Decimal)
 case_Exp:
-        jmp     Drop
+        ; at first --> identify place, where arg is (xmm or stack)
+    .xmm0:
+    .xmm1:
+    .xmm2:
+    .xmm3:
+    .Stack:
+
+        jmp     AfterPercent
 case_Float:
         jmp     Drop
 case_Global:
         jmp Drop
 case_Octal:
         ; in this case we can't use rep movsb, so we should make an individual proc
-        add     rsi, 2
-        add     rbx, 2
-
-        inc     r14
-        push    r14
-
-        shl     r14, 3
         mov     rdx, [r14+rbp+16]       ; rbx = number value
-        pop     r14
         mov     r15, rdx                ; r15 = saved number value
 
         cmp     rdx, 0
@@ -402,22 +376,14 @@ case_String:
         ; only change source: rsi = absolute addr of symbol in format string    -->    rsi = absolute addr of symbol in argument string
         ;                     rbx = shift in format string on symbol            -->    rbx = shift in argument string on symbol
                                 ; next values we will use to continue
-        add     rsi, 2          ; skip % and specifier in format sting
-        add     rbx, 2          ; skip % and specifier in shift of format string
-
-        inc     r14     ; update argument number
         ; save params for work with format string
         push    rsi
         push    rbx
 
-        push    r14     ; save argument number
-
         xor     rbx, rbx        ; set shift in argument string
 
-        shl     r14, 3
         mov     rsi, [r14+rbp+16]      ; now: rsi = *(rbp+r14*8+16) = start address of string
 
-        pop     r14     ; restore argument number
         push    rsi     ; save start address of argument string
 
     .Next:
@@ -439,15 +405,7 @@ case_String:
         jmp     AfterPercent
 case_Hex:
         ; in this case we can't use rep movsb, so we should make an individual proc
-        add     rsi, 2
-        add     rbx, 2
-
-        inc     r14
-        push    r14
-
-        shl     r14, 3
         mov     rdx, [r14+rbp+16]       ; rbx = number value
-        pop     r14
         mov     r15, rdx                ; r15 = saved number value
 
         cmp     rdx, 0
