@@ -242,8 +242,89 @@ case_Character:
                                         ;          ^
                                         ;    rsi _/
         jmp     AfterPercent
+case_Decimal:
+        add     rsi, 2
+        add     rbx, 2
+
+        push    rax     ; should save, because we will use division
+
+        inc     r14
+        push    r14
+
+        shl     r14, 3
+        mov     rax, [r14+rbp+16]       ; rbx = number value
+        pop     r14
+
+        ; check: have we got one free byte in output buffer?
+        cmp     r12, OPBuf_size
+        jb      case_Decimal.Continue
+                CLEVER_DROP_BUFFER
+    .Continue:
+
+        ; if value equal zero, we can do it so fast:
+        cmp     rax, 0
+        jne     case_Decimal.Skip
+                mov     byte [rdi], '0'
+                pop     rax
+                INC_REGS rax, rdi, r12
+                jmp     AfterPercent
+    .Skip:
+
+        push    rax
+        shr     rax, 63         ; lets see highest bit
+        cmp     rax, 1
+        pop     rax
+        jne     case_Decimal.Positive
+                ; set minus sign
+                mov     byte [rdi], '-'
+                INC_REGS rdi, r12
+                mov     rcx, qword [rsp]
+                inc     rcx
+                mov     qword [rsp], rcx
+                ; make positive
+                not     rax
+                inc     rax
+    .Positive:
+
+        ; save in stack numbers in correct order
+        mov     r15, 10         ; value for division
+        xor     rcx, rcx        ; counter of numbers to write
+    .NextDiv:
+                xor     rdx, rdx
+                div     r15             ; rax = [rax/10] ; rdx = rax - 10 * [rax/10]
+                push    rdx
+                inc     rcx
+        cmp     rax, 0
+        jne     case_Decimal.NextDiv
+
+        mov     rdx, rcx        ; save number of writing bytes
+
+        ; write numbers from stack:
+    .NextNum:
+        cmp     r12, OPBuf_size
+        jb      case_Decimal.Write
+                CLEVER_DROP_BUFFER
+    .Write:
+                pop     rax
+                add     rax, '0'
+                mov     byte [rdi], al
+                INC_REGS rdi, r12
+                dec     rcx
+
+        cmp     rcx, 0
+        ja      case_Decimal.NextNum
+
+        pop     rax
+        add     rax, rdx
+
+        jmp  AfterPercent
+
+case_Exp:
+        jmp     Drop
 case_Float:
         jmp     Drop
+case_Global:
+        jmp Drop
 case_Octal:
         ; in this case we can't use rep movsb, so we should make an individual proc
         add     rsi, 2
@@ -436,9 +517,11 @@ PF              db 0    ; percent flag
 JmpTable:
 times 'c'       dq 0                    ; ... -  a
                 dq case_Character       ; c
-times 'f'-'c'-1 dq 0                    ; d, e
+                dq case_Decimal         ; d
+                dq case_Exp             ; e
                 dq case_Float           ; f
-times 'o'-'f'-1 dq 0                    ; g, h, i, g, k, l, m, n
+                dq case_Global          ; g
+times 'o'-'g'-1 dq 0                    ; h, i, g, k, l, m, n
                 dq case_Octal           ; o
 times 's'-'o'-1 dq 0                    ; p, q, r
                 dq case_String          ; s
