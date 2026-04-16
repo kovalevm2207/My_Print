@@ -98,6 +98,7 @@ extern printf
 section .text
 
 global MyPrint
+global GetFPValue
 
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ; rax - return value
@@ -295,14 +296,41 @@ case_Decimal:
 ; val = (-1)^S * 1.M_d * 2^(E_d)    <-- *_d - decimal representation
 ;(You can see, how to convert from Binary to Decimal, for example in case_Decimal)
 case_Exp:
+        cmp     r12, OPBuf_size-3 ; - (sign + before_dot_sym + dot) (then we will have a cycle)
+        jl      case_Exp.WriteSign; we must use signed conditional jump
+                CLEVER_DROP_BUFFER
+    .WriteSign:
         ; at first --> identify place, where arg is (xmm or stack)
-    .xmm0:
-    .xmm1:
-    .xmm2:
-    .xmm3:
-    .Stack:
+        call    GetFPValue
+        ; r13 = float-point argument
+        ; at second --> set sign
+        mov     r15, r13
+        shr     r15, 63 ; see highest bit = sign
+        cmp     r15, 1
+        jne     case_Exp.Positive
+                mov     byte [rdi], '-'
+                INC_REGS rax, rdi, r12
+    .Positive:
 
         jmp     AfterPercent
+;------------------------------------------------------------------------------
+; return float-point argument value in r13; Input params: r14 = arg_number * 8
+;------------------------------------------------------------------------------
+GetFPValue:
+        cmp     r14, 8*3; = sizeof(arg)*(MaxArgNum-1)
+        ja      Stack
+        lea     r13, [rel FPTable]
+        jmp     [r13+r14]
+
+    ;.xmm0:  <-- optional, because zero argument in MyPrint always is format string ptr (char*) - saved in rcx
+    case_xmm1: movq     r13, xmm1
+               ret
+    case_xmm2: movq     r13, xmm2
+               ret
+    case_xmm3: movq     r13, xmm3
+               ret
+    Stack:     mov      r13, qword [rbp+r14+16]
+               ret
 case_Float:
         jmp     Drop
 case_Global:
@@ -471,6 +499,12 @@ MyPrintRetVal   dq 0
 
 RF              db 0    ; repeat flag
 PF              db 0    ; percent flag
+
+FPTable:
+                dq 0
+                dq case_xmm1
+                dq case_xmm2
+                dq case_xmm3
 
 JmpTable:
 times 'c'       dq 0                    ; ... -  a
