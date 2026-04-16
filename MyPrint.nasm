@@ -129,6 +129,8 @@ MyPrint:
         mov     rbp, rsp        ; return address is on rbp+8  position
                                 ; first argument is on rbp+16 position e.t.c.
         PUSH_REGS rdi, rsi, rbx, r12, r13, r14, r15
+        sub     rsp, 16
+        movsd   [rsp], xmm0
 
         ; We must end our program with old rsp to save it
         ; We must implement this: push    r11 ; if we will use this registers
@@ -156,6 +158,8 @@ MyPrint:
         je     Next
 
         ; restore Nonvolatile registers
+        movsd   xmm0, [rsp]
+        add     rsp, 16
         POP_REGS rbp, rdi, rsi, rbx, r12, r13, r14, r15
 
         ; restore args
