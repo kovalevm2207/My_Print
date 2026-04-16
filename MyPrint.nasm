@@ -349,6 +349,9 @@ case_Exp:
         cvtsi2sd  xmm6, rdx     ; convert signed integer to signed double
         subsd     xmm0, xmm6    ; xmm0 = fractional part
 
+        movsd   xmm6, [rel round_eps]   ; round exp part
+        addsd   xmm0, xmm6
+
         mov     rcx, 6          ; take from seeing standard printf output --> 0.000000e+00
     .NextFrac:
                 ; make integer
@@ -570,6 +573,7 @@ section .data
 one             dq  1.0
 neg_one         dq -1.0
 ten             dq  10.0
+round_eps       dq  0.0000005
 
 ; Flags of status format string
 RF              db 0    ; repeat flag
