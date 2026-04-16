@@ -292,8 +292,7 @@ case_Decimal:
 ;       |S| E (Exp) |     M (Mantissa)     |    <-- binary representation
 ;       |1| 11 bit  |        52 bit        |
 ;       ------------------------------------
-;
-; val = (-1)^S * 1.M_d * 2^(E_d)    <-- *_d - decimal representation
+; value = (-1)^S × (1 + M/2^52) × 2^(E - 1023)
 ;(You can see, how to convert from Binary to Decimal, for example in case_Decimal)
 case_Exp:
         cmp     r12, OPBuf_size-3 ; - (sign + before_dot_sym + dot) (then we will have a cycle)
@@ -304,17 +303,20 @@ case_Exp:
         call    GetFPValue
         ; r13 = float-point argument
         ; at second --> set sign
-        mov     r15, r13
-        shr     r15, 63 ; see highest bit = sign
-        cmp     r15, 1
+        movq    r13, xmm0
+        shr     r13, 63 ; see highest bit = sign
+        cmp     r13, 1
         jne     case_Exp.Positive
                 mov     byte [rdi], '-'
                 INC_REGS rax, rdi, r12
     .Positive:
+        ; at third --> set before dot number and dot too
+
 
         jmp     AfterPercent
 ;------------------------------------------------------------------------------
-; return float-point argument value in r13; Input params: r14 = arg_number * 8
+; return float-point argument value in xmm0; Input params: r14 = arg_number * 8
+; determinate list: r13
 ;------------------------------------------------------------------------------
 GetFPValue:
         cmp     r14, 8*3; = sizeof(arg)*(MaxArgNum-1)
@@ -323,13 +325,14 @@ GetFPValue:
         jmp     [r13+r14]
 
     ;.xmm0:  <-- optional, because zero argument in MyPrint always is format string ptr (char*) - saved in rcx
-    case_xmm1: movq     r13, xmm1
+    ; so we will used xmm0 such as return value
+    case_xmm1: movsd    xmm0, xmm1
                ret
-    case_xmm2: movq     r13, xmm2
+    case_xmm2: movsd    xmm0, xmm2
                ret
-    case_xmm3: movq     r13, xmm3
+    case_xmm3: movsd    xmm0, xmm3
                ret
-    Stack:     mov      r13, qword [rbp+r14+16]
+    Stack:     movsd    xmm0, [rbp+r14+16]
                ret
 case_Float:
         jmp     Drop
