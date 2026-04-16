@@ -420,6 +420,18 @@ case_Exp:
     .NormEnd:
 
     ; at fourth --> display normalized mantissa with dot
+        ; add round for frac part
+        addsd     xmm0, [rel round_frac]
+
+        ; check overflow (>= 10.0)
+        comisd    xmm0, [rel ten]
+        jb        .NoCarry
+
+        ; case overflow
+        divsd     xmm0, [rel ten]
+        inc       r13
+
+    .NoCarry:
         ; rdx = [integer part]
         cvttsd2si rdx, xmm0     ; convert Scalar Double to signed integer
         add       rdx, '0'
@@ -654,7 +666,6 @@ section .data
 one             dq  1.0
 neg_one         dq -1.0
 ten             dq  10.0
-round_eps       dq  0.0000005
 round_frac      dq  0.0000005
 MMask           dq  0x000FFFFFFFFFFFFF
 
