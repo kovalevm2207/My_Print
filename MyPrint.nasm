@@ -129,8 +129,9 @@ MyPrint:
         mov     rbp, rsp        ; return address is on rbp+8  position
                                 ; first argument is on rbp+16 position e.t.c.
         PUSH_REGS rdi, rsi, rbx, r12, r13, r14, r15
-        sub     rsp, 16
-        movsd   [rsp], xmm0
+        sub     rsp, 32
+        movsd   [rsp],    xmm0
+        movsd   [rsp+16], xmm6
 
         ; We must end our program with old rsp to save it
         ; We must implement this: push    r11 ; if we will use this registers
@@ -158,8 +159,9 @@ MyPrint:
         je     Next
 
         ; restore Nonvolatile registers
+        movsd   xmm6, [rsp+16]
         movsd   xmm0, [rsp]
-        add     rsp, 16
+        add     rsp, 32
         POP_REGS rbp, rdi, rsi, rbx, r12, r13, r14, r15
 
         ; restore args
@@ -224,6 +226,10 @@ case_Character:
 
         jmp     AfterPercent
 case_Decimal:
+        cmp     r12, OPBuf_size-20
+        jb      case_Decimal.Write
+                CLEVER_DROP_BUFFER
+    .Write:
         push    rax     ; should save, because we will use division
         mov     rax, [r14+rbp+16]       ; rbx = number value
 
@@ -273,10 +279,6 @@ case_Decimal:
 
         ; write numbers from stack:
     .NextNum:
-        cmp     r12, OPBuf_size
-        jb      case_Decimal.Write
-                CLEVER_DROP_BUFFER
-    .Write:
                 pop     rax
                 add     rax, '0'
                 mov     byte [rdi], al
@@ -299,23 +301,101 @@ case_Decimal:
 ; value = (-1)^S × (1 + M/2^52) × 2^(E - 1023)
 ;(You can see, how to convert from Binary to Decimal, for example in case_Decimal)
 case_Exp:
-        cmp     r12, OPBuf_size-3 ; - (sign + before_dot_sym + dot) (then we will have a cycle)
+        cmp     r12, OPBuf_size-13 ; - (sign(1 or 0) + before_dot_sym() + dot + frac_symbols)
         jl      case_Exp.WriteSign; we must use signed conditional jump
                 CLEVER_DROP_BUFFER
     .WriteSign:
-        ; at first --> identify place, where arg is (xmm or stack)
+    ; at first --> identify place, where arg is (xmm or stack)
         call    GetFPValue
         ; r13 = float-point argument
-        ; at second --> set sign
+
+    ; at second --> set sign
         movq    r13, xmm0
         shr     r13, 63 ; see highest bit = sign
         cmp     r13, 1
         jne     case_Exp.Positive
                 mov     byte [rdi], '-'
                 INC_REGS rax, rdi, r12
+                mulsd   xmm0, [rel neg_one]
     .Positive:
-        ; at third --> set before dot number and dot too
 
+    ; at third --> normalize number to format 1.23455+0e3
+        xor     r13, r13        ; we will save here exp value
+    .NormL:
+        comisd  xmm0, [rel one]
+        jae     case_Exp.NormH
+                mulsd   xmm0, [rel ten]
+                dec     r13
+                jmp     case_Exp.NormL
+    .NormH:
+        comisd  xmm0, [rel ten]
+        jb      case_Exp.NormEnd
+                divsd   xmm0, [rel ten]
+                inc     r13
+                jmp     case_Exp.NormH
+    .NormEnd:
+
+    ; at fourth --> display normalized mantissa with dot
+        ; rdx = [integer part]
+        cvttsd2si rdx, xmm0     ; convert Scalar Double to signed integer
+        add       rdx, '0'
+        mov       byte [rdi], dl
+        INC_REGS  rax, r12, rdi
+        ; display dot
+        mov       byte [rdi], '.'
+        INC_REGS  rax, r12, rdi
+        ; display other symbols
+        sub       rdx, '0'      ; restore the integer part
+        cvtsi2sd  xmm6, rdx     ; convert signed integer to signed double
+        subsd     xmm0, xmm6    ; xmm0 = fractional part
+
+        mov     rcx, 6          ; take from seeing standard printf output --> 0.000000e+00
+    .NextFrac:
+                ; make integer
+                mulsd     xmm0, [rel ten]
+                cvttsd2si rdx, xmm0
+                add       dl, '0'
+                mov       byte [rdi], dl
+                INC_REGS  rax, r12, rdi
+                ; update xmm0
+                sub       rdx, '0'
+                cvtsi2sd  xmm6, rdx
+                subsd     xmm0, xmm6
+        dec     rcx
+        jnz     case_Exp.NextFrac
+
+    ; at fifth --> display pre exp equation (e- or e+) (we saved an exp in r13)
+        ; set exp sym
+        mov     byte [rdi], 'e'
+        INC_REGS rax, rdi, r12
+
+        ; set exp sign
+        cmp     r13, 0
+        jge     case_Exp.PositiveExp
+                mov     byte [rdi], '-'
+                INC_REGS rax, rdi, r12
+                neg     r13
+                jmp     case_Exp.ExpEnd
+    .PositiveExp:
+        mov     byte [rdi], '+'
+        INC_REGS rax, rdi, r12
+
+    .ExpEnd:
+    ; at sixth --> display abs value of exp (2 numbers)
+        push    rax
+        mov     rax, r13
+        xor     rdx, rdx
+        mov     rcx, 10
+        div     rcx             ; r13/10 ==>  al = tens, dl = units
+
+        add     al, '0'
+        mov     byte [rdi], al
+        pop     rax
+        INC_REGS rax, rdi, r12
+
+        add     dl, '0'
+        mov     byte [rdi], dl
+        INC_REGS rax, rdi, r12
 
         jmp     AfterPercent
 ;------------------------------------------------------------------------------
@@ -343,18 +423,17 @@ case_Float:
 case_Global:
         jmp Drop
 case_Octal:
+        cmp     r12, OPBuf_size-22
+        jb      case_Octal.Write
+                        CLEVER_DROP_BUFFER
+        .Write:
         ; in this case we can't use rep movsb, so we should make an individual proc
         mov     rdx, [r14+rbp+16]       ; rbx = number value
         mov     r15, rdx                ; r15 = saved number value
 
         cmp     rdx, 0
         jne     case_Octal.Skip
-                cmp     r12, OPBuf_size
-                jb      case_Octal.WriteZ
-                        CLEVER_DROP_BUFFER
-            .WriteZ:
                 mov     byte [rdi], '0'
-
                 INC_REGS rax, rdi, r12
                 jmp     AfterPercent
     .Skip:
@@ -365,12 +444,7 @@ case_Octal:
         and     rdx, r13
         cmp     rdx, 0
         je      case_Octal.FirstZ
-                cmp     r12, OPBuf_size
-                jb      case_Octal.WriteFirst
-                        CLEVER_DROP_BUFFER
-            .WriteFirst:
                 mov     byte [rdi], '1'
-
                 INC_REGS rax, rdi, r12
     .FirstZ:
 
@@ -389,10 +463,6 @@ case_Octal:
                 cmp     rdx, 0
                 je      case_Octal.Increment
 
-                cmp     r12, OPBuf_size
-                jb      case_Octal.Write
-                        CLEVER_DROP_BUFFER
-            .Write:
                 INC_REGS rax, r12
 
                 add     rdx, '0'
@@ -439,18 +509,17 @@ case_String:
 
         jmp     AfterPercent
 case_Hex:
+        cmp     r12, OPBuf_size-16
+        jb      case_Hex.Write
+                CLEVER_DROP_BUFFER
+    .Write:
         ; in this case we can't use rep movsb, so we should make an individual proc
         mov     rdx, [r14+rbp+16]       ; rbx = number value
         mov     r15, rdx                ; r15 = saved number value
 
         cmp     rdx, 0
         jne     case_Hex.Skip
-                cmp     r12, OPBuf_size
-                jb      case_Hex.WriteZ
-                        CLEVER_DROP_BUFFER
-            .WriteZ:
                 mov     byte [rdi], '0'
-
                 INC_REGS rax, rdi, r12
                 jmp     AfterPercent
     .Skip:
@@ -468,10 +537,6 @@ case_Hex:
                 cmp     rdx, 0
                 je      case_Hex.Increment
 
-                cmp     r12, OPBuf_size
-                jb      case_Hex.Write
-                        CLEVER_DROP_BUFFER
-            .Write:
                 INC_REGS rax, r12
 
                 cmp     rdx, 10
@@ -501,18 +566,23 @@ OPBuf:  resb OPBuf_size
 
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 section .data
+; float-point constants for work with xmm registers
+one             dq  1.0
+neg_one         dq -1.0
+ten             dq  10.0
 
-MyPrintRetVal   dq 0
-
+; Flags of status format string
 RF              db 0    ; repeat flag
 PF              db 0    ; percent flag
 
+; jmp table for float-point arguments
 FPTable:
                 dq 0
                 dq case_xmm1
                 dq case_xmm2
                 dq case_xmm3
 
+; jmp table for different cases of specifier
 JmpTable:
 times 'c'       dq 0                    ; ... -  a
                 dq case_Character       ; c
