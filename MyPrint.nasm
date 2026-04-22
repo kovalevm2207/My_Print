@@ -237,8 +237,8 @@ case_Decimal:
         jb      case_Decimal.Write
                 CLEVER_DROP_BUFFER
     .Write:
-        push    rax     ; should save, because we will use division
-        mov     rax, [r14+rbp+16]       ; rbx = number value
+        push    rax                     ; should save return value
+        mov     rax, [r14+rbp+16]       ; eax = number value
 
         ; check: have we got one free byte in output buffer?
         cmp     r12, OPBuf_size
@@ -247,7 +247,7 @@ case_Decimal:
     .Continue:
 
         ; if value equal zero, we can do it so fast:
-        cmp     rax, 0
+        cmp     eax, 0
         jne     case_Decimal.Skip
                 mov     byte [rdi], '0'
                 pop     rax
@@ -256,7 +256,7 @@ case_Decimal:
     .Skip:
 
         push    rax
-        shr     rax, 63         ; lets see highest bit
+        shr     rax, 31         ; lets see highest bit
         cmp     rax, 1
         pop     rax
         jne     case_Decimal.Positive
@@ -264,10 +264,10 @@ case_Decimal:
                 mov     byte [rdi], '-'
                 INC_REGS rdi, r12
                 mov     rcx, qword [rsp]
-                inc     rcx
+                inc     rcx             ; increment return value
                 mov     qword [rsp], rcx
                 ; make positive
-                not     rax
+                not     eax
                 inc     rax
     .Positive:
 
