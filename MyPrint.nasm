@@ -125,6 +125,10 @@ global GetFPValue
 ;       xmm6 - xmm15
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 MyPrint:
+        pop     r12                     ; return ptr
+        sub     rsp, 40                 ; shadow space
+
+        mov     qword [rsp   ], r12     ; return ptr
         mov     qword [rsp+8 ], rcx     ; save 1st argument
         mov     qword [rsp+16], rdx     ; save 2nd argument
         mov     qword [rsp+24], r8      ; save 3rd argument
@@ -136,6 +140,8 @@ MyPrint:
         mov     rbp, rsp        ; return address is on rbp+8  position
                                 ; first argument is on rbp+16 position e.t.c.
         PUSH_REGS rdi, rsi, rbx, r12, r13, r14, r15
+
+        ; save nonvolatile registers
         sub     rsp, 32
         movsd   [rsp],    xmm0
         movsd   [rsp+16], xmm6
@@ -146,11 +152,12 @@ MyPrint:
         xor     rax, rax        ; return value = NULL
         xor     rbx, rbx        ; shift in format string = NULL
         xor     r14, r14        ; set start value for argument counter
+        lea     r15, [rbp+16]   ; start of format string
 
   Next:
         xor     r12, r12        ; len of cur buffer
         ; move part of format string to OPBuf
-        mov     rsi, [rbp+16]   ; start of format string
+        mov     rsi, [r15]   ; start of format string
         add     rsi, rbx        ; rsi = ptr in format string = address of start + shift, which equals number of processed symbols
         mov     rdi, OPBuf
     AfterPercent:
@@ -222,9 +229,7 @@ case_Character:
     WriteCharacter:
         push    rsi             ; save position in format string
 
-        mov     rsi, rbp
-        add     rsi, r14
-        add     rsi, 16          ; ptr on argument
+        lea     rsi, [rbp+r14+16]       ; ptr on argument
         movsb   ;[rdi++], [rsi = (rbp+r14+16)]
 
         pop     rsi             ; restore position in format string
@@ -234,19 +239,26 @@ case_Character:
         jmp     AfterPercent
 case_Decimal:
         cmp     r12, OPBuf_size-20
-        jb      case_Decimal.Write
-                CLEVER_DROP_BUFFER
-    .Write:
-        push    rax                     ; should save return value
-        mov     rax, [r14+rbp+16]       ; eax = number value
-
-        ; check: have we got one free byte in output buffer?
-        cmp     r12, OPBuf_size
         jb      case_Decimal.Continue
                 CLEVER_DROP_BUFFER
-    .Continue:
 
-        ; if value equal zero, we can do it so fast:
+    .Continue:
+        push    rax                     ; should save return value
+
+        cmp     r14, 32  ; <-- numbers of registers with argument
+        je      case_Decimal.Boundary
+        ja      case_Decimal.StackArg
+            ; argument in register
+            movsxd  rax, dword [r14+rbp+16]       ; eax = number value
+            jmp     case_Decimal.Write
+    .Boundary:
+            add     rbp, 80         ;
+    .StackArg:
+            mov     eax, dword [rbp]
+            add     rbp, sizeof_int
+    .Write:
+
+        ; if value equal zero, we can do it faster:
         cmp     eax, 0
         jne     case_Decimal.Skip
                 mov     byte [rdi], '0'
@@ -256,8 +268,8 @@ case_Decimal:
     .Skip:
 
         push    rax
-        shr     rax, 31         ; lets see highest bit
-        cmp     rax, 1
+        shr     eax, 31         ; lets see highest bit
+        cmp     eax, 1
         pop     rax
         jne     case_Decimal.Positive
                 ; set minus sign
@@ -272,11 +284,11 @@ case_Decimal:
     .Positive:
 
         ; save in stack numbers in correct order
-        mov     r15, 10         ; value for division
+        mov     r11, 10         ; value for division
         xor     rcx, rcx        ; counter of numbers to write
     .NextDiv:
                 xor     rdx, rdx
-                div     r15             ; rax = [rax/10] ; rdx = rax - 10 * [rax/10]
+                div     r11             ; rax = [rax/10] ; rdx = rax - 10 * [rax/10]
                 push    rdx
                 inc     rcx
         cmp     rax, 0
@@ -525,7 +537,7 @@ case_Octal:
         .Write:
         ; in this case we can't use rep movsb, so we should make an individual proc
         mov     rdx, [r14+rbp+16]       ; rbx = number value
-        mov     r15, rdx                ; r15 = saved number value
+        mov     r11, rdx                ; r15 = saved number value
 
         cmp     rdx, 0
         jne     case_Octal.Skip
@@ -551,7 +563,7 @@ case_Octal:
 
         mov     rcx, 1          ; counter
         .Next:
-                mov     rdx, r15
+                mov     rdx, r11
                 and     rdx, r13
                 shl     rdx, cl
                 shr     rdx, 64-3
@@ -611,7 +623,7 @@ case_Hex:
     .Write:
         ; in this case we can't use rep movsb, so we should make an individual proc
         mov     rdx, [r14+rbp+16]       ; rbx = number value
-        mov     r15, rdx                ; r15 = saved number value
+        mov     r11, rdx                ; r15 = saved number value
 
         cmp     rdx, 0
         jne     case_Hex.Skip
@@ -625,7 +637,7 @@ case_Hex:
 
         xor     rcx, rcx        ; counter
         .Next:
-                mov     rdx, r15
+                mov     rdx, r11
                 and     rdx, r13
                 shl     rdx, cl
                 shr     rdx, 64-4
@@ -662,6 +674,15 @@ OPBuf:  resb OPBuf_size
 
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 section .data
+
+; size constants (byte):
+sizeof_char    equ  1
+
+sizeof_int     equ  8
+
+sizeof_double  equ  8
+sizeof_ptr     equ  8
+
 ; float-point constants for work with xmm registers
 one             dq  1.0
 neg_one         dq -1.0

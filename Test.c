@@ -189,11 +189,6 @@ int main()
     std_res = printf("Decimal bounds 32: _%d_ _%d_\n", 2147483647, -2147483648);
     printf("MyPrint: %d, printf: %d\n\n", my_res, std_res);
 
-    // Граничные значения 64-bit
-    my_res = MyPrint("Decimal bounds 64: _%d_ _%d_\n", 9223372036854775807LL, -9223372036854775808LL);
-    std_res = printf("Decimal bounds 64: _%ld_ _%ld_\n", 9223372036854775807LL, -9223372036854775808LL);
-    printf("MyPrint: %d, printf: %d\n\n", my_res, std_res);
-
     // Много чисел подряд
     my_res = MyPrint("Decimal sequence: _%d_ _%d_ _%d_ _%d_ _%d_\n", 1, 12, 123, 1234, 12345);
     std_res = printf("Decimal sequence: _%d_ _%d_ _%d_ _%d_ _%d_\n", 1, 12, 123, 1234, 12345);
