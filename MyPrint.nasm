@@ -25,7 +25,7 @@ extern printf
 
 %macro ADD_REGS 2-*
     %rep %0-1
-        add     %2, %1
+        add     %1, %2
         %rotate 1
     %endrep
 %endmacro
@@ -326,12 +326,13 @@ case_Exp:
     ; at first --> test on special cases, sch as inf, nan, 0.000000e+00 and Denormal numbers
         ; get E
         mov     rdx, r13
-        shr     rdx, 52
-        and     rdx, 0x7ff
+        shl     rdx, 1      ; delete sign
+        shr     rdx, 52+1   ; delete mantissa (+ one shift from delete sign)
 
         ;get M
         mov     rcx, r13
-        and     rcx, qword [rel MMask]
+        shl     rcx, 12
+        shr     rcx, 12
 
         cmp     rdx, 2047 ; E >=< 2^11-1
         jne     case_Exp.CheckZ
@@ -346,7 +347,7 @@ case_Exp:
                         ; rdi already set
                         rep     movsb
                         pop     rsi
-                        ADD_REGS NanLen, r12, rax
+                        ADD_REGS r12, rax, NanLen
 
                         jmp     AfterPercent
             .INF:
@@ -365,7 +366,7 @@ case_Exp:
                 ; rdi already set
                 rep     movsb
                 pop     rsi
-                ADD_REGS InfLen, rax, r12
+                ADD_REGS rax, r12, InfLen
 
                 jmp     AfterPercent
     .CheckZ:
@@ -388,7 +389,7 @@ case_Exp:
                         ; rdi already set
                         rep     movsb
                         pop     rsi
-                        ADD_REGS ZerLen, r12, rax
+                        ADD_REGS r12, rax, ZerLen
                         jmp     AfterPercent
             .Denormal:
                 ; do a little later
@@ -403,10 +404,10 @@ case_Exp:
                 mulsd   xmm0, [rel neg_one]
     .Positive:
 
-    ; at third --> normalize number to format 1.23455+0e3
+    ; at third --> normalize number to decimal from binary
         xor     r13, r13        ; we will save here exp value
     .NormL:
-        comisd  xmm0, [rel one]
+        comisd  xmm0, [rel one] ; example
         jae     case_Exp.NormH
                 mulsd   xmm0, [rel ten]
                 dec     r13
@@ -423,23 +424,15 @@ case_Exp:
         ; add round for frac part
         addsd     xmm0, [rel round_frac]
 
-        ; check overflow (>= 10.0)
-        comisd    xmm0, [rel ten]
-        jb        .NoCarry
-
-        ; case overflow
-        divsd     xmm0, [rel ten]
-        inc       r13
-
-    .NoCarry:
         ; rdx = [integer part]
-        cvttsd2si rdx, xmm0     ; convert Scalar Double to signed integer
+        cvttsd2si rdx, xmm0     ; convert Scalar Double to signed integer (delete after dot part)
         add       rdx, '0'
         mov       byte [rdi], dl
         INC_REGS  rdi, r12, rax
         ; display dot
         mov       byte [rdi], '.'
         INC_REGS  rdi, r12, rax
+
         ; display other symbols
         sub       rdx, '0'      ; restore the integer part
         cvtsi2sd  xmm6, rdx     ; convert signed integer to signed double
@@ -449,7 +442,7 @@ case_Exp:
     .NextFrac:
                 ; make integer
                 mulsd     xmm0, [rel ten]
-                cvttsd2si rdx, xmm0
+                cvttsd2si rdx, xmm0 ; convert Scalar Double to signed integer (delete after dot part)
                 add       dl, '0'
                 mov       byte [rdi], dl
                 INC_REGS  rdi, r12, rax
@@ -475,23 +468,48 @@ case_Exp:
     .PositiveExp:
         mov     byte [rdi], '+'
         INC_REGS  rdi, r12, rax
-
     .ExpEnd:
-    ; at sixth --> display abs value of exp (2 numbers)
-        push    rax
-        mov     rax, r13
-        xor     rdx, rdx
-        mov     rcx, 10
-        div     rcx             ; r13/10 ==>  al = tens, dl = units
 
-        add     al, '0'
-        mov     byte [rdi], al
-        pop     rax
-        INC_REGS  rdi, r12, rax
+    ; at sixth --> display abs value of exp
+            push    rax
+            mov     rax, r13
+            xor     rdx, rdx
+            mov     rcx, 10
+            div     rcx             ; r13/10 ==>  al = tens, dl = units
 
-        add     dl, '0'
-        mov     byte [rdi], dl
-        INC_REGS  rdi, r12, rax
+        cmp     rax, 10
+        jae     case_Exp.Three
+
+            add     al, '0'
+            mov     byte [rdi], al
+            pop     rax
+            INC_REGS  rdi, r12, rax
+
+            add     dl, '0'
+            mov     byte [rdi], dl
+            INC_REGS  rdi, r12, rax
+
+            jmp     AfterPercent
+
+        .Three:
+            mov     rbx, rdx
+
+            xor     rdx, rdx
+            div     rcx
+
+            add     al, '0'
+            mov     byte [rdi], al
+            pop     rax
+            INC_REGS  rdi, r12, rax
+
+            add     dl, '0'
+            mov     byte [rdi], dl
+            INC_REGS  rdi, r12, rax
+
+            add     bl, '0'
+            mov     byte [rdi], bl
+            INC_REGS  rdi, r12, rax
+
 
         jmp     AfterPercent
 ;------------------------------------------------------------------------------
@@ -674,7 +692,6 @@ one             dq  1.0
 neg_one         dq -1.0
 ten             dq  10.0
 round_frac      dq  0.0000005
-MMask           dq  0x000FFFFFFFFFFFFF
 
 ; Float-point different cases
 NanStr:         db  "nan"
