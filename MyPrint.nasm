@@ -125,10 +125,7 @@ global GetFPValue
 ;       xmm6 - xmm15
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 MyPrint:
-        pop     r12                     ; return ptr
-        sub     rsp, 40                 ; shadow space
-
-        mov     qword [rsp   ], r12     ; return ptr
+        ; save registers in shadow space
         mov     qword [rsp+8 ], rcx     ; save 1st argument
         mov     qword [rsp+16], rdx     ; save 2nd argument
         mov     qword [rsp+24], r8      ; save 3rd argument
@@ -137,8 +134,8 @@ MyPrint:
         ; Save Nonvolatile registers
         ; Save address beginning of arguments
         push    rbp
-        mov     rbp, rsp        ; return address is on rbp+8  position
-                                ; first argument is on rbp+16 position e.t.c.
+        lea     rbp, [rsp+16]    ; return address is on rbp  position
+                                ; first argument is on rbp+8 position e.t.c.
         PUSH_REGS rdi, rsi, rbx, r12, r13, r14, r15
 
         ; save nonvolatile registers
@@ -152,12 +149,11 @@ MyPrint:
         xor     rax, rax        ; return value = NULL
         xor     rbx, rbx        ; shift in format string = NULL
         xor     r14, r14        ; set start value for argument counter
-        lea     r15, [rbp+16]   ; start of format string
 
   Next:
         xor     r12, r12        ; len of cur buffer
         ; move part of format string to OPBuf
-        mov     rsi, [r15]   ; start of format string
+        mov     rsi, [rbp]   ; start of format string
         add     rsi, rbx        ; rsi = ptr in format string = address of start + shift, which equals number of processed symbols
         mov     rdi, OPBuf
     AfterPercent:
@@ -178,19 +174,23 @@ MyPrint:
         add     rsp, 32
         POP_REGS rbp, rdi, rsi, rbx, r12, r13, r14, r15
 
+    ;-----------------------------------------------------------------------std printf call
         ; restore args
         mov     rcx, qword [rsp+8 ]
         mov     rdx, qword [rsp+16]
         mov     r8,  qword [rsp+24]
         mov     r9,  qword [rsp+32]
 
-    ;    mov     qword [rel MyPrintRetVal], rax
-        ;pop     rbx
-        ;
-        ;call    printf
-        ;
-        ;push    rbx
-    ;    mov     rax, qword [rel MyPrintRetVal]
+        mov     qword [rel MyRetVal], rax
+        pop     rax
+        mov     qword [rel MyRetAddr], rax      ; save return ptr for MyPrint in nonvolatile register
+
+        call    printf
+
+        mov     rax, qword [rel MyRetAddr]
+        push    rax
+        mov     rax, qword [rel MyRetVal]
+    ;-----------------------------------------------------------------------std printf call
 
         ret
 
@@ -229,7 +229,7 @@ case_Character:
     WriteCharacter:
         push    rsi             ; save position in format string
 
-        lea     rsi, [rbp+r14+16]       ; ptr on argument
+        lea     rsi, [rbp+r14]       ; ptr on argument
         movsb   ;[rdi++], [rsi = (rbp+r14+16)]
 
         pop     rsi             ; restore position in format string
@@ -244,19 +244,7 @@ case_Decimal:
 
     .Continue:
         push    rax                     ; should save return value
-
-        cmp     r14, 32  ; <-- numbers of registers with argument
-        je      case_Decimal.Boundary
-        ja      case_Decimal.StackArg
-            ; argument in register
-            movsxd  rax, dword [r14+rbp+16]       ; eax = number value
-            jmp     case_Decimal.Write
-    .Boundary:
-            add     rbp, 80         ;
-    .StackArg:
-            mov     eax, dword [rbp]
-            add     rbp, sizeof_int
-    .Write:
+        movsxd  rax, dword [r14+rbp]       ; eax = number value
 
         ; if value equal zero, we can do it faster:
         cmp     eax, 0
@@ -524,7 +512,7 @@ GetFPValue:
                ret
     case_xmm3: movsd    xmm0, xmm3
                ret
-    Stack:     movsd    xmm0, [rbp+r14+16]
+    Stack:     movsd    xmm0, [rbp+r14]
                ret
 case_Float:
         jmp     Drop
@@ -536,8 +524,8 @@ case_Octal:
                         CLEVER_DROP_BUFFER
         .Write:
         ; in this case we can't use rep movsb, so we should make an individual proc
-        mov     rdx, [r14+rbp+16]       ; rbx = number value
-        mov     r11, rdx                ; r15 = saved number value
+        mov     rdx, [r14+rbp]       ; rbx = number value
+        mov     r11, rdx                ; r11 = saved number value
 
         cmp     rdx, 0
         jne     case_Octal.Skip
@@ -595,7 +583,7 @@ case_String:
 
         xor     rbx, rbx        ; set shift in argument string
 
-        mov     rsi, [r14+rbp+16]      ; now: rsi = *(rbp+r14*8+16) = start address of string
+        mov     rsi, [r14+rbp]      ; now: rsi = *(rbp+r14*8+16) = start address of string
 
         push    rsi     ; save start address of argument string
 
@@ -622,8 +610,8 @@ case_Hex:
                 CLEVER_DROP_BUFFER
     .Write:
         ; in this case we can't use rep movsb, so we should make an individual proc
-        mov     rdx, [r14+rbp+16]       ; rbx = number value
-        mov     r11, rdx                ; r15 = saved number value
+        mov     rdx, [r14+rbp]       ; rbx = number value
+        mov     r11, rdx                ; r11 = saved number value
 
         cmp     rdx, 0
         jne     case_Hex.Skip
@@ -674,14 +662,8 @@ OPBuf:  resb OPBuf_size
 
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 section .data
-
-; size constants (byte):
-sizeof_char    equ  1
-
-sizeof_int     equ  8
-
-sizeof_double  equ  8
-sizeof_ptr     equ  8
+MyRetVal        dq  0
+MyRetAddr       dq  0
 
 ; float-point constants for work with xmm registers
 one             dq  1.0
