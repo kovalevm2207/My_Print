@@ -23,13 +23,6 @@ extern printf
     %endrep
 %endmacro
 
-%macro ADD_REGS 2-*
-    %rep %0-1
-        add     %1, %2
-        %rotate 1
-    %endrep
-%endmacro
-
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ; Read and count in rcx number of string's symbols, while we don't find '%' or '\0'
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -347,7 +340,8 @@ case_Exp:
                         ; rdi already set
                         rep     movsb
                         pop     rsi
-                        ADD_REGS r12, rax, NanLen
+                        add     r12, NanLen
+                        add     rax, NanLen
 
                         jmp     AfterPercent
             .INF:
@@ -366,10 +360,11 @@ case_Exp:
                 ; rdi already set
                 rep     movsb
                 pop     rsi
-                ADD_REGS rax, r12, InfLen
+                add     rax, InfLen
+                add     r12, InfLen
 
                 jmp     AfterPercent
-    .CheckZ:
+        .CheckZ:
         cmp     rdx, 0    ; E >=< 0
         jne     case_Exp.Normal
                 cmp     rcx, 0    ; M >=< 0
@@ -389,12 +384,13 @@ case_Exp:
                         ; rdi already set
                         rep     movsb
                         pop     rsi
-                        ADD_REGS r12, rax, ZerLen
+                        add     r12, ZerLen
+                        add     rax, ZerLen
                         jmp     AfterPercent
             .Denormal:
                 ; do a little later
                 jmp     case_Exp.Normal
-    .Normal:
+        .Normal:
     ; at second --> set sign
         shr     r13, 63 ; see highest bit = sign
         cmp     r13, 1
@@ -402,23 +398,23 @@ case_Exp:
                 mov     byte [rdi], '-'
                 INC_REGS rdi, r12, rax
                 mulsd   xmm0, [rel neg_one]
-    .Positive:
+        .Positive:
 
     ; at third --> normalize number to decimal from binary
         xor     r13, r13        ; we will save here exp value
-    .NormL:
+        .NormL:
         comisd  xmm0, [rel one] ; example
         jae     case_Exp.NormH
                 mulsd   xmm0, [rel ten]
                 dec     r13
                 jmp     case_Exp.NormL
-    .NormH:
+        .NormH:
         comisd  xmm0, [rel ten]
         jb      case_Exp.NormEnd
                 divsd   xmm0, [rel ten]
                 inc     r13
                 jmp     case_Exp.NormH
-    .NormEnd:
+        .NormEnd:
 
     ; at fourth --> display normalized mantissa with dot
         ; add round for frac part
@@ -439,7 +435,7 @@ case_Exp:
         subsd     xmm0, xmm6    ; xmm0 = fractional part
 
         mov     rcx, 6
-    .NextFrac:
+        .NextFrac:
                 ; make integer
                 mulsd     xmm0, [rel ten]
                 cvttsd2si rdx, xmm0 ; convert Scalar Double to signed integer (delete after dot part)
@@ -465,10 +461,10 @@ case_Exp:
                 INC_REGS  rdi, r12, rax
                 neg     r13
                 jmp     case_Exp.ExpEnd
-    .PositiveExp:
+        .PositiveExp:
         mov     byte [rdi], '+'
         INC_REGS  rdi, r12, rax
-    .ExpEnd:
+        .ExpEnd:
 
     ; at sixth --> display abs value of exp
             push    rax
