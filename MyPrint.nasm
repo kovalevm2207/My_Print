@@ -560,15 +560,8 @@ case_Octal:
         .WNext:
                 pop     rdx
             .InDotW:
-                cmp     rdx, 10
-                jae     case_Octal.Letter
-                        add     rdx, '0'
-                        mov     byte [rdi], dl
-                        jmp     case_Octal.Inc
-            .Letter:
-                add     rdx, 'a'-10
-                mov     byte [rdi],dl
-            .Inc:
+                add     rdx, '0'
+                mov     byte [rdi], dl
                 INC_REGS rax, r12, rdi
                 sub     rcx, 3
         cmp     rcx, 0
