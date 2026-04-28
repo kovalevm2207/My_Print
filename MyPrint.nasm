@@ -368,7 +368,7 @@ case_Exp:
         cmp     rdx, 0    ; E >=< 0
         jne     case_Exp.Normal
                 cmp     rcx, 0    ; M >=< 0
-                jne     case_Exp.Denormal
+                jne     case_Exp.Normal
                         ; sign
                         shr     r13, 63 ; see highest bit = sign
                         cmp     r13, 1
@@ -387,9 +387,6 @@ case_Exp:
                         add     r12, ZerLen
                         add     rax, ZerLen
                         jmp     AfterPercent
-            .Denormal:
-                ; do a little later
-                jmp     case_Exp.Normal
         .Normal:
     ; at second --> set sign
         shr     r13, 63 ; see highest bit = sign
@@ -422,6 +419,9 @@ case_Exp:
 
         ; rdx = [integer part]
         cvttsd2si rdx, xmm0     ; convert Scalar Double to signed integer (delete after dot part)
+        cmp       rdx, 10
+        jae       case_Exp.NormH
+
         add       rdx, '0'
         mov       byte [rdi], dl
         INC_REGS  rdi, r12, rax
