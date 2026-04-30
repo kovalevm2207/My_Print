@@ -204,6 +204,11 @@ Percent:
 
                 inc     rsi
                 inc     rbx
+                movzx   rcx, byte [rsi]
+                cmp     cl, '%'
+                jne     AfterPercent
+                        mov       byte [rdi], '%'
+                        INC_REGS  rdi, r12, rax
                 jmp     AfterPercent
     Correct:
         add     r14, 8             ; increment argument counter
