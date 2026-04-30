@@ -378,14 +378,14 @@ case_Exp:
                                 mulsd   xmm0, [rel neg_one]
                         .ZPos:
                         ; write zero str "0.000000e+00"
-                        mov     rcx, ZerLen
+                        mov     rcx, ZELen
                         push    rsi
-                        mov     rsi, ZerStr
+                        mov     rsi, ZEStr
                         ; rdi already set
                         rep     movsb
                         pop     rsi
-                        add     r12, ZerLen
-                        add     rax, ZerLen
+                        add     r12, ZELen
+                        add     rax, ZELen
                         jmp     AfterPercent
         .Normal:
     ; at second --> set sign
@@ -397,7 +397,7 @@ case_Exp:
                 mulsd   xmm0, [rel neg_one]
         .Positive:
 
-    ; at third --> normalize number to decimal from binary
+    ; at third --> normalize number
         xor     r13, r13        ; we will save here exp value
         .NormL:
         comisd  xmm0, [rel one] ; example
@@ -529,7 +529,153 @@ GetFPValue:
     Stack:     movsd    xmm0, [rbp+r14]
                ret
 case_Float:
-        jmp     Drop
+        cmp     r12, OPBuf_size-17 ; - (sign(1 or 0) + before_dot_sym() + dot + frac_symbols)
+        jl      case_Float.WriteSign; we must use signed conditional jump
+                CLEVER_DROP_BUFFER
+    .WriteSign:
+    ; at zero --> identify place, where arg is (xmm or stack)
+        call    GetFPValue      ; xmm0 = float-point argument
+        movq    r13, xmm0
+
+    ; at first --> test on special cases, sch as inf, nan, 0.000000e+00 and Denormal numbers
+        ; get E
+        mov     rdx, r13
+        shl     rdx, 1      ; delete sign
+        shr     rdx, 52+1   ; delete mantissa (+ one shift from delete sign)
+
+        ;get M
+        mov     rcx, r13
+        shl     rcx, 12
+        shr     rcx, 12
+
+        cmp     rdx, 2047 ; E >=< 2^11-1
+        jne     case_Float.CheckZ
+
+                cmp     rcx, 0
+                je      case_Float.INF
+
+                        ; write nan
+                        mov     rcx, NanLen
+                        push    rsi
+                        mov     rsi, NanStr
+                        ; rdi already set
+                        rep     movsb
+                        pop     rsi
+                        add     r12, NanLen
+                        add     rax, NanLen
+
+                        jmp     AfterPercent
+            .INF:
+                ; set sign
+                shr     r13, 63 ; see highest bit = sign
+                cmp     r13, 1
+                jne     case_Float.InfPos
+                        mov     byte [rdi], '-'
+                        INC_REGS rdi, r12, rax
+                        mulsd   xmm0, [rel neg_one]
+                .InfPos:
+                ; write inf
+                mov     rcx, InfLen
+                push    rsi
+                mov     rsi, InfStr
+                ; rdi already set
+                rep     movsb
+                pop     rsi
+                add     rax, InfLen
+                add     r12, InfLen
+
+                jmp     AfterPercent
+        .CheckZ:
+        cmp     rdx, 0    ; E >=< 0
+        jne     case_Float.Normal
+                cmp     rcx, 0    ; M >=< 0
+                jne     case_Float.Normal
+                        ; sign
+                        shr     r13, 63 ; see highest bit = sign
+                        cmp     r13, 1
+                        jne     case_Float.ZPos
+                                mov     byte [rdi], '-'
+                                INC_REGS rdi, r12, rax
+                                mulsd   xmm0, [rel neg_one]
+                        .ZPos:
+                        ; write zero str "0.000000e+00"
+                        mov     rcx, ZFLen
+                        push    rsi
+                        mov     rsi, ZFStr
+                        ; rdi already set
+                        rep     movsb
+                        pop     rsi
+                        add     r12, ZFLen
+                        add     rax, ZFLen
+                        jmp     AfterPercent
+        .Normal:
+    ; at second --> set sign
+        shr     r13, 63 ; see highest bit = sign
+        cmp     r13, 1
+        jne     case_Float.Positive
+                mov     byte [rdi], '-'
+                INC_REGS rdi, r12, rax
+                mulsd   xmm0, [rel neg_one]
+        .Positive:
+
+    ; at third --> show integer part of float value
+
+        push    rax
+
+        cvttsd2si rax, xmm0
+        cvtsi2sd  xmm6, rax     ; xmm6 == rax
+        subsd     xmm0, xmm6    ; xmm0 == float part of float-double number
+
+        ; save in stack numbers in correct order
+        mov     r11, 10         ; value for division
+        xor     rcx, rcx        ; counter of numbers to write
+        .NextDiv:
+                xor     rdx, rdx
+                div     r11             ; rax = [rax/10] ; rdx = rax - 10 * [rax/10]
+                push    rdx
+                inc     rcx
+        cmp     rax, 0
+        jne     case_Float.NextDiv
+
+        mov     rdx, rcx        ; save number of writing bytes
+
+        ; write numbers from stack:
+        .NextNum:
+                pop     rax
+                add     rax, '0'
+                mov     byte [rdi], al
+                INC_REGS rdi, r12
+                dec     rcx
+
+        cmp     rcx, 0
+        ja      case_Float.NextNum
+
+        pop     rax
+        add     rax, rdx
+
+    ; at fourth --> display dot
+        mov       byte [rdi], '.'
+        INC_REGS  rdi, r12, rax
+
+    ; at fifth --> display after dot numbers:
+        push      rax
+        xor       rdx, rdx
+    .NextADNum:
+                mulsd     xmm0, [rel ten]
+                cvttsd2si rax, xmm0
+                cvtsi2sd  xmm6, rax
+                subsd     xmm0, xmm6
+
+                add       rax, '0'
+                mov       byte [rdi], al
+                INC_REGS  rdi, r12, rdx
+        cmp     rdx, 6
+        jb      case_Float.NextADNum
+
+        pop     rax
+        add     rax, 6
+
+        jmp       AfterPercent
 case_Global:
         jmp Drop
 case_Octal:
@@ -694,8 +840,10 @@ NanStr:         db  "nan"
 NanLen:        equ  $ - NanStr
 InfStr:         db  "inf"
 InfLen:        equ  $ - InfStr
-ZerStr:         db  "0.000000e+00"
-ZerLen:        equ  $ - ZerStr
+ZEStr:         db  "0.000000e+00"
+ZELen:        equ  $ - ZEStr
+ZFStr:         db  "0.000000"
+ZFLen:        equ  $ - ZFStr
 
 ; Flags of status format string
 RF              db 0    ; repeat flag

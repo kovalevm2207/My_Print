@@ -346,6 +346,74 @@ int main()
     std_res = printf("Exp precision: _%e_\n", 1.234567890123456789);
     printf("MyPrint: %d, printf: %d\n\n", my_res, std_res);
 
+    printf("=== %%f - FLOAT TESTS ===\n\n");
+
+    // Ноль
+    my_res = MyPrint("Float zero: _%f_ _%f_\n", 0.0, -0.0);
+    std_res = printf("Float zero: _%f_ _%f_\n", 0.0, -0.0);
+    printf("MyPrint: %d, printf: %d\n\n", my_res, std_res);
+
+    // Целые числа
+    my_res = MyPrint("Float integers: _%f_ _%f_ _%f_\n", 1.0, 42.0, -123.0);
+    std_res = printf("Float integers: _%f_ _%f_ _%f_\n", 1.0, 42.0, -123.0);
+    printf("MyPrint: %d, printf: %d\n\n", my_res, std_res);
+
+    // Дробные числа
+    my_res = MyPrint("Float fractions: _%f_ _%f_ _%f_\n", 0.1, 0.01, 0.001);
+    std_res = printf("Float fractions: _%f_ _%f_ _%f_\n", 0.1, 0.01, 0.001);
+    printf("MyPrint: %d, printf: %d\n\n", my_res, std_res);
+
+    // Обычные числа
+    my_res = MyPrint("Float normal: _%f_ _%f_ _%f_\n", 3.14, -2.718, 123.456);
+    std_res = printf("Float normal: _%f_ _%f_ _%f_\n", 3.14, -2.718, 123.456);
+    printf("MyPrint: %d, printf: %d\n\n", my_res, std_res);
+
+    // Округление вверх
+    my_res = MyPrint("Float round up: _%f_ _%f_ _%f_\n", 1.9999995, 2.0000005, 3.9999995);
+    std_res = printf("Float round up: _%f_ _%f_ _%f_\n", 1.9999995, 2.0000005, 3.9999995);
+    printf("MyPrint: %d, printf: %d\n\n", my_res, std_res);
+
+    // Округление вниз
+    my_res = MyPrint("Float round down: _%f_ _%f_ _%f_\n", 1.9999994, 2.0000004, 3.9999994);
+    std_res = printf("Float round down: _%f_ _%f_ _%f_\n", 1.9999994, 2.0000004, 3.9999994);
+    printf("MyPrint: %d, printf: %d\n\n", my_res, std_res);
+
+    // Каскадный перенос
+    my_res = MyPrint("Float cascade: _%f_ _%f_ _%f_\n", 9.9999995, 99.9999995, 999.9999995);
+    std_res = printf("Float cascade: _%f_ _%f_ _%f_\n", 9.9999995, 99.9999995, 999.9999995);
+    printf("MyPrint: %d, printf: %d\n\n", my_res, std_res);
+
+    // Большие числа
+    my_res = MyPrint("Float large: _%f_ _%f_\n", 1234567.0, 123456789.0);
+    std_res = printf("Float large: _%f_ _%f_\n", 1234567.0, 123456789.0);
+    printf("MyPrint: %d, printf: %d\n\n", my_res, std_res);
+
+    // Очень большие числа (много цифр до точки)
+    my_res = MyPrint("Float very large: _%f_\n", 1.234567e+10);
+    std_res = printf("Float very large: _%f_\n", 1.234567e+10);
+    printf("MyPrint: %d, printf: %d\n\n", my_res, std_res);
+
+    // Очень маленькие числа (много нулей после точки)
+    my_res = MyPrint("Float very small: _%f_ _%f_\n", 0.0000001, 0.000000000123456);
+    std_res = printf("Float very small: _%f_ _%f_\n", 0.0000001, 0.000000000123456);
+    printf("MyPrint: %d, printf: %d\n\n", my_res, std_res);
+
+    // Специальные значения
+    my_res = MyPrint("Float special: _%f_ _%f_ _%f_\n", 1.0/0.0, -1.0/0.0, 0.0/0.0);
+    std_res = printf("Float special: _%f_ _%f_ _%f_\n", 1.0/0.0, -1.0/0.0, 0.0/0.0);
+    printf("MyPrint: %d, printf: %d\n\n", my_res, std_res);
+
+    // Точность
+    my_res = MyPrint("Float precision: _%f_\n", 1.234567890123456789);
+    std_res = printf("Float precision: _%f_\n", 1.234567890123456789);
+    printf("MyPrint: %d, printf: %d\n\n", my_res, std_res);
+
+    // Float (32-bit) — должно повышаться до double
+    float f = 3.14159f;
+    my_res = MyPrint("Float 32bit: _%f_\n", f);
+    std_res = printf("Float 32bit: _%f_\n", f);
+    printf("MyPrint: %d, printf: %d\n\n", my_res, std_res);
+
     // ==========================================
     //         MIXED FORMAT TESTS
     // ==========================================
