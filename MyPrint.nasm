@@ -187,11 +187,11 @@ MyPrint:
 
         ret
 
-; in this branch we have free registers: rcx, rdx
-; r14 - number of argument, start value = 0 (format string)
-; [rsi] = '%'
-; rdi   - first free position in output buffer
 Percent:
+        ; in this branch we have free registers: rcx, rdx
+        ; r14 - number of argument, start value = 0 (format string)
+        ; [rsi] = '%'
+        ; rdi   - first free position in output buffer
         ; /--------------- rcx = 00 00 00 **
         movzx   rcx, byte [rsi+1]        ; cl = opcode of after percent symbol
         shl     rcx, 3                   ; rcx*8 - because we save our labels with 8 shift (qword)
@@ -228,7 +228,7 @@ case_Binary:
 
         mov     r10, 1
 
-        call    ShowNum
+        call    Show2Num
 
         jmp     AfterPercent
 case_Character:
@@ -312,21 +312,21 @@ case_Decimal:
 
         jmp  AfterPercent
 
-; Floating-point number structure:
-;       ------------------------------------
-;       |S| E (Exp) |     M (Mantissa)     |    <-- binary representation
-;       |1| 11 bit  |        52 bit        |
-;       ------------------------------------
-; value = (-1)^S * (1 + M/2^52) * 2^(E - 1023)
-;(You can see, how to convert from Binary to Decimal, for example in case_Decimal)
-; special cases:
-;                0.000000e+00  <==> S == 0      && E == 0      && M == 0
-;               -0.000000e+00  <==> S == 1      && E == 0      && M == 0
-;                inf           <==> S == 0      && E == 2^11-1 && M == 0
-;               -inf           <==> S == 1      && E == 2^11-1 && M == 0
-;                nan           <==> S == {0, 1} && E == 2^11-1 && M != 0
-; Denormal numbers (-1)^S * (M/2^52) * 2^(E - 1022)  <==>  E == 0 && M != 0
 case_Exp:
+        ; Floating-point number structure:
+        ;       ------------------------------------
+        ;       |S| E (Exp) |     M (Mantissa)     |    <-- binary representation
+        ;       |1| 11 bit  |        52 bit        |
+        ;       ------------------------------------
+        ; value = (-1)^S * (1 + M/2^52) * 2^(E - 1023)
+        ;(You can see, how to convert from Binary to Decimal, for example in case_Decimal)
+        ; special cases:
+        ;                0.000000e+00  <==> S == 0      && E == 0      && M == 0
+        ;               -0.000000e+00  <==> S == 1      && E == 0      && M == 0
+        ;                inf           <==> S == 0      && E == 2^11-1 && M == 0
+        ;               -inf           <==> S == 1      && E == 2^11-1 && M == 0
+        ;                nan           <==> S == {0, 1} && E == 2^11-1 && M != 0
+        ; Denormal numbers (-1)^S * (M/2^52) * 2^(E - 1022)  <==>  E == 0 && M != 0
         cmp     r12, OPBuf_size-13 ; - (sign(1 or 0) + before_dot_sym() + dot + frac_symbols)
         jl      case_Exp.WriteSign; we must use signed conditional jump
                 CLEVER_DROP_BUFFER
@@ -336,77 +336,7 @@ case_Exp:
         movq    r13, xmm0
 
     ; at first --> test on special cases, sch as inf, nan, 0.000000e+00 and Denormal numbers
-        ; get E
-        mov     rdx, r13
-        shl     rdx, 1      ; delete sign
-        shr     rdx, 52+1   ; delete mantissa (+ one shift from delete sign)
-
-        ;get M
-        mov     rcx, r13
-        shl     rcx, 12
-        shr     rcx, 12
-
-        cmp     rdx, 2047 ; E >=< 2^11-1
-        jne     case_Exp.CheckZ
-
-                cmp     rcx, 0
-                je      case_Exp.INF
-
-                        ; write nan
-                        mov     rcx, NanLen
-                        push    rsi
-                        mov     rsi, NanStr
-                        ; rdi already set
-                        rep     movsb
-                        pop     rsi
-                        add     r12, NanLen
-                        add     rax, NanLen
-
-                        jmp     AfterPercent
-            .INF:
-                ; set sign
-                shr     r13, 63 ; see highest bit = sign
-                cmp     r13, 1
-                jne     case_Exp.InfPos
-                        mov     byte [rdi], '-'
-                        INC_REGS rdi, r12, rax
-                        mulsd   xmm0, [rel neg_one]
-                .InfPos:
-                ; write inf
-                mov     rcx, InfLen
-                push    rsi
-                mov     rsi, InfStr
-                ; rdi already set
-                rep     movsb
-                pop     rsi
-                add     rax, InfLen
-                add     r12, InfLen
-
-                jmp     AfterPercent
-        .CheckZ:
-        cmp     rdx, 0    ; E >=< 0
-        jne     case_Exp.Normal
-                cmp     rcx, 0    ; M >=< 0
-                jne     case_Exp.Normal
-                        ; sign
-                        shr     r13, 63 ; see highest bit = sign
-                        cmp     r13, 1
-                        jne     case_Exp.ZPos
-                                mov     byte [rdi], '-'
-                                INC_REGS rdi, r12, rax
-                                mulsd   xmm0, [rel neg_one]
-                        .ZPos:
-                        ; write zero str "0.000000e+00"
-                        mov     rcx, ZELen
-                        push    rsi
-                        mov     rsi, ZEStr
-                        ; rdi already set
-                        rep     movsb
-                        pop     rsi
-                        add     r12, ZELen
-                        add     rax, ZELen
-                        jmp     AfterPercent
-        .Normal:
+        call    CheckSpecialFloatCases
     ; at second --> set sign
         shr     r13, 63 ; see highest bit = sign
         cmp     r13, 1
@@ -527,26 +457,7 @@ case_Exp:
 
 
         jmp     AfterPercent
-;------------------------------------------------------------------------------
-; return float-point argument value in xmm0; Input params: r14 = arg_number * 8
-; determinate list: r13
-;------------------------------------------------------------------------------
-GetFPValue:
-        cmp     r14, 8*3; = sizeof(arg)*(MaxArgNum-1)
-        ja      Stack
-        lea     r13, [rel FPTable]
-        jmp     [r13+r14]
 
-    ;.xmm0:  <-- optional, because zero argument in MyPrint always is format string ptr (char*) - saved in rcx
-    ; so we will used xmm0 such as return value
-    case_xmm1: movsd    xmm0, xmm1
-               ret
-    case_xmm2: movsd    xmm0, xmm2
-               ret
-    case_xmm3: movsd    xmm0, xmm3
-               ret
-    Stack:     movsd    xmm0, [rbp+r14]
-               ret
 case_Float:
         cmp     r12, OPBuf_size-17 ; - (sign(1 or 0) + before_dot_sym() + dot + frac_symbols)
         jl      case_Float.WriteSign; we must use signed conditional jump
@@ -557,77 +468,7 @@ case_Float:
         movq    r13, xmm0
 
     ; at first --> test on special cases, sch as inf, nan, 0.000000e+00 and Denormal numbers
-        ; get E
-        mov     rdx, r13
-        shl     rdx, 1      ; delete sign
-        shr     rdx, 52+1   ; delete mantissa (+ one shift from delete sign)
-
-        ;get M
-        mov     rcx, r13
-        shl     rcx, 12
-        shr     rcx, 12
-
-        cmp     rdx, 2047 ; E >=< 2^11-1
-        jne     case_Float.CheckZ
-
-                cmp     rcx, 0
-                je      case_Float.INF
-
-                        ; write nan
-                        mov     rcx, NanLen
-                        push    rsi
-                        mov     rsi, NanStr
-                        ; rdi already set
-                        rep     movsb
-                        pop     rsi
-                        add     r12, NanLen
-                        add     rax, NanLen
-
-                        jmp     AfterPercent
-            .INF:
-                ; set sign
-                shr     r13, 63 ; see highest bit = sign
-                cmp     r13, 1
-                jne     case_Float.InfPos
-                        mov     byte [rdi], '-'
-                        INC_REGS rdi, r12, rax
-                        mulsd   xmm0, [rel neg_one]
-                .InfPos:
-                ; write inf
-                mov     rcx, InfLen
-                push    rsi
-                mov     rsi, InfStr
-                ; rdi already set
-                rep     movsb
-                pop     rsi
-                add     rax, InfLen
-                add     r12, InfLen
-
-                jmp     AfterPercent
-        .CheckZ:
-        cmp     rdx, 0    ; E >=< 0
-        jne     case_Float.Normal
-                cmp     rcx, 0    ; M >=< 0
-                jne     case_Float.Normal
-                        ; sign
-                        shr     r13, 63 ; see highest bit = sign
-                        cmp     r13, 1
-                        jne     case_Float.ZPos
-                                mov     byte [rdi], '-'
-                                INC_REGS rdi, r12, rax
-                                mulsd   xmm0, [rel neg_one]
-                        .ZPos:
-                        ; write zero str "0.000000e+00"
-                        mov     rcx, ZFLen
-                        push    rsi
-                        mov     rsi, ZFStr
-                        ; rdi already set
-                        rep     movsb
-                        pop     rsi
-                        add     r12, ZFLen
-                        add     rax, ZFLen
-                        jmp     AfterPercent
-        .Normal:
+        call    CheckSpecialFloatCases
     ; at second --> set sign
         shr     r13, 63 ; see highest bit = sign
         cmp     r13, 1
@@ -708,7 +549,7 @@ case_Octal:
 
         mov     r10, 3
 
-        call    ShowNum
+        call    Show2Num
 
         jmp     AfterPercent
 case_String:
@@ -754,12 +595,12 @@ case_Hex:
 
         mov     r10, 4
 
-        call    ShowNum
+        call    Show2Num
 
         jmp     AfterPercent
 
 ;---------------------------------------------------------------------------------
-; ShowNum: put into buffer symbols of the number in different calc systems
+; Show2Num: put into buffer symbols of the number in different calc systems
 ;
 ; input: r10 = log_2(base of calc system)
 ;        r9  = addr of beginning value
@@ -769,13 +610,13 @@ case_Hex:
 ;
 ; Volatile registers: r14, r13, rcx
 ;---------------------------------------------------------------------------------
-ShowNum:
+Show2Num:
         ; in this case we can't use rep movsb, so we should make an individual proc
         mov     edx, [r9]          ; rbx = number value
         mov     r11, rdx                ; r11 = saved number value
 
         cmp     rdx, 0
-        jne     ShowNum.Skip
+        jne     Show2Num.Skip
                 mov     byte [rdi], '0'
                 INC_REGS rax, rdi, r12
                 ret
@@ -801,23 +642,23 @@ ShowNum:
                 add     rcx, r10
 
         cmp     rcx, 32
-        jb      ShowNum.SNext
+        jb      Show2Num.SNext
 
         .SkipZ:         ; skip first zeros
                 pop     rdx
                 cmp     rdx, 0
-                jne     ShowNum.InDotW
+                jne     Show2Num.InDotW
                     sub     rcx, r10
-                    jmp     ShowNum.SkipZ
+                    jmp     Show2Num.SkipZ
 
         .WNext:
                 pop     rdx
             .InDotW:
                 cmp     rdx, 10
-                jae     ShowNum.Letter
+                jae     Show2Num.Letter
                         add     rdx, '0'
                         mov     byte [rdi], dl
-                        jmp     ShowNum.Inc
+                        jmp     Show2Num.Inc
             .Letter:
                 add     rdx, 'a'-10
                 mov     byte [rdi],dl
@@ -825,7 +666,106 @@ ShowNum:
                 INC_REGS rax, r12, rdi
                 sub     rcx, r10
         cmp     rcx, 0
-        ja      ShowNum.WNext
+        ja      Show2Num.WNext
+
+        ret
+;------------------------------------------------------------------------------
+; return float-point argument value in xmm0; Input params: r14 = arg_number * 8
+; determinate list: r13
+;------------------------------------------------------------------------------
+GetFPValue:
+        cmp     r14, 8*3; = sizeof(arg)*(MaxArgNum-1)
+        ja      Stack
+        lea     r13, [rel FPTable]
+        jmp     [r13+r14]
+
+    ;.xmm0:  <-- optional, because zero argument in MyPrint always is format string ptr (char*) - saved in rcx
+    ; so we will used xmm0 such as return value
+    case_xmm1: movsd    xmm0, xmm1
+               ret
+    case_xmm2: movsd    xmm0, xmm2
+               ret
+    case_xmm3: movsd    xmm0, xmm3
+               ret
+    Stack:     movsd    xmm0, [rbp+r14]
+               ret
+;------------------------------------------------------------------------------
+CheckSpecialFloatCases:
+        ; get E
+        mov     rdx, r13
+        shl     rdx, 1      ; delete sign
+        shr     rdx, 52+1   ; delete mantissa (+ one shift from delete sign)
+
+        ;get M
+        mov     rcx, r13
+        shl     rcx, 12
+        shr     rcx, 12
+
+        cmp     rdx, 2047 ; E >=< 2^11-1
+        jne     CheckSpecialFloatCases.CheckZ
+
+                cmp     rcx, 0
+                je      CheckSpecialFloatCases.INF
+
+                        ; write nan
+                        mov     rcx, NanLen
+                        push    rsi
+                        mov     rsi, NanStr
+                        ; rdi already set
+                        rep     movsb
+                        pop     rsi
+                        add     r12, NanLen
+                        add     rax, NanLen
+
+                        add     rsp, 8
+                        jmp     AfterPercent
+            .INF:
+                ; set sign
+                shr     r13, 63 ; see highest bit = sign
+                cmp     r13, 1
+                jne     CheckSpecialFloatCases.InfPos
+                        mov     byte [rdi], '-'
+                        INC_REGS rdi, r12, rax
+                        mulsd   xmm0, [rel neg_one]
+                .InfPos:
+                ; write inf
+                mov     rcx, InfLen
+                push    rsi
+                mov     rsi, InfStr
+                ; rdi already set
+                rep     movsb
+                pop     rsi
+                add     rax, InfLen
+                add     r12, InfLen
+
+                add     rsp, 8
+                jmp     AfterPercent
+        .CheckZ:
+        cmp     rdx, 0    ; E >=< 0
+        jne     CheckSpecialFloatCases.Normal
+                cmp     rcx, 0    ; M >=< 0
+                jne     CheckSpecialFloatCases.Normal
+                        ; sign
+                        shr     r13, 63 ; see highest bit = sign
+                        cmp     r13, 1
+                        jne     CheckSpecialFloatCases.ZPos
+                                mov     byte [rdi], '-'
+                                INC_REGS rdi, r12, rax
+                                mulsd   xmm0, [rel neg_one]
+                        .ZPos:
+                        ; write zero str "0.000000e+00"
+                        mov     rcx, ZFLen
+                        push    rsi
+                        mov     rsi, ZFStr
+                        ; rdi already set
+                        rep     movsb
+                        pop     rsi
+                        add     r12, ZFLen
+                        add     rax, ZFLen
+
+                        add     rsp, 8
+                        jmp     AfterPercent
+        .Normal:
 
         ret
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
