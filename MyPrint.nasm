@@ -688,49 +688,13 @@ case_Octal:
         jb      case_Octal.Write
                         CLEVER_DROP_BUFFER
     .Write:
-        ; in this case we can't use rep movsb, so we should make an individual proc
-        mov     edx, [r14+rbp]       ; rbx = number value
-        mov     r11, rdx                ; r11 = saved number value
 
-        cmp     rdx, 0
-        jne     case_Octal.Skip
-                mov     byte [rdi], '0'
-                INC_REGS rax, rdi, r12
-                jmp     AfterPercent
-    .Skip:
-                                ;          \/------- 1 letter = 4 bits ; bit_size(r13) = 64
-        mov     r13, -1         ; r13 = ffff ffff ffff ffff  --- we need ---> r13 = (0000 0000) 0000 000f - mask
-        shr     r13, 64-3       ; bit_size(r13) - log_2(16)        optional >--------^^^^^^^^^
+        mov     r9, r14
+        add     r9, rbp
 
-        xor     rcx, rcx        ; counter
-        .SNext:
-                mov     rdx, r11    ; get argument value
-                and     rdx, r13    ; masking
-                shr     rdx, cl
-                push    rdx         ; save in stack
-                shl     r13, 3      ; update mask
+        mov     r10, 3
 
-                add     rcx, 3
-
-        cmp     rcx, 32
-        jb      case_Octal.SNext
-
-        .SkipZ:         ; skip first zeros
-                pop     rdx
-                cmp     rdx, 0
-                jne     case_Octal.InDotW
-                    sub     rcx, 3
-                    jmp     case_Octal.SkipZ
-
-        .WNext:
-                pop     rdx
-            .InDotW:
-                add     rdx, '0'
-                mov     byte [rdi], dl
-                INC_REGS rax, r12, rdi
-                sub     rcx, 3
-        cmp     rcx, 0
-        ja      case_Octal.WNext
+        call    ShowNum
 
         jmp     AfterPercent
 case_String:
@@ -770,19 +734,44 @@ case_Hex:
         jb      case_Hex.Write
                 CLEVER_DROP_BUFFER
     .Write:
+
+        mov     r9, r14
+        add     r9, rbp
+
+        mov     r10, 4
+
+        call    ShowNum
+
+        jmp     AfterPercent
+
+;---------------------------------------------------------------------------------
+; ShowNum: put into buffer symbols of the number in different calc systems
+;
+; input: r10 = log_2(base of calc system)
+;        r9  = addr of beginning value
+;        r12 = shift in output buffer         | !!! Your output buffer must have needed capacity of free memory for save there symbols of displaying value !!!
+;        rdi = current addr in output buffer  |
+;        rax = counter of displayed symbols
+;
+; Volatile registers: r14, r13, rcx
+;---------------------------------------------------------------------------------
+ShowNum:
         ; in this case we can't use rep movsb, so we should make an individual proc
-        mov     edx, [r14+rbp]       ; rbx = number value
+        mov     edx, [r9]          ; rbx = number value
         mov     r11, rdx                ; r11 = saved number value
 
         cmp     rdx, 0
-        jne     case_Hex.Skip
+        jne     ShowNum.Skip
                 mov     byte [rdi], '0'
                 INC_REGS rax, rdi, r12
-                jmp     AfterPercent
+                ret
     .Skip:
                                 ;          \/------- 1 letter = 4 bits ; bit_size(r13) = 64
         mov     r13, -1         ; r13 = ffff ffff ffff ffff  --- we need ---> r13 = (0000 0000) 0000 000f - mask
-        shr     r13, 64-4       ; bit_size(r13) - log_2(16)        optional >--------^^^^^^^^^
+        mov     rcx, r10
+        neg     rcx
+        add     rcx, 64
+        shr     r13, cl        ; bit_size(r13) - log_2(16)        optional >--------^^^^^^^^^
 
         xor     rcx, rcx        ; counter
         .SNext:
@@ -790,39 +779,41 @@ case_Hex:
                 and     rdx, r13    ; masking
                 shr     rdx, cl
                 push    rdx         ; save in stack
-                shl     r13, 4      ; update mask
+                push    rcx
+                mov     rcx, r10
+                shl     r13, cl    ; update mask
+                pop     rcx
 
-                add     rcx, 4
+                add     rcx, r10
 
         cmp     rcx, 32
-        jb      case_Hex.SNext
+        jb      ShowNum.SNext
 
         .SkipZ:         ; skip first zeros
                 pop     rdx
                 cmp     rdx, 0
-                jne     case_Hex.InDotW
-                    sub     rcx, 4
-                    jmp     case_Hex.SkipZ
+                jne     ShowNum.InDotW
+                    sub     rcx, r10
+                    jmp     ShowNum.SkipZ
 
         .WNext:
                 pop     rdx
             .InDotW:
                 cmp     rdx, 10
-                jae     case_Hex.Letter
+                jae     ShowNum.Letter
                         add     rdx, '0'
                         mov     byte [rdi], dl
-                        jmp     case_Hex.Inc
+                        jmp     ShowNum.Inc
             .Letter:
                 add     rdx, 'a'-10
                 mov     byte [rdi],dl
             .Inc:
                 INC_REGS rax, r12, rdi
-                sub     rcx, 4
+                sub     rcx, r10
         cmp     rcx, 0
-        ja      case_Hex.WNext
+        ja      ShowNum.WNext
 
-        jmp     AfterPercent
-
+        ret
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 section .bss
 
