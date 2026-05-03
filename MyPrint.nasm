@@ -217,6 +217,20 @@ Percent:
                                         ;          ^
                                         ;    rsi _/
         jmp     rcx
+case_Binary:
+        cmp     r12, OPBuf_size-32
+        jb      case_Binary.Write
+                        CLEVER_DROP_BUFFER
+    .Write:
+
+        mov     r9, r14
+        add     r9, rbp
+
+        mov     r10, 1
+
+        call    ShowNum
+
+        jmp     AfterPercent
 case_Character:
         ; in this case we need only one free byte in OPBuf
         cmp     r12, OPBuf_size
@@ -854,7 +868,8 @@ FPTable:
 
 ; jmp table for different cases of specifier
 JmpTable:
-times 'c'       dq 0                    ; ... -  a
+times 'b'       dq 0                    ; ... -  a
+                dq case_Binary          ; b
                 dq case_Character       ; c
                 dq case_Decimal         ; d
                 dq case_Exp             ; e
