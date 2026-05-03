@@ -460,9 +460,9 @@ case_Exp:
 
 case_Float:
         cmp     r12, OPBuf_size-17 ; - (sign(1 or 0) + before_dot_sym() + dot + frac_symbols)
-        jl      case_Float.WriteSign; we must use signed conditional jump
+        jl      case_Float.Write; we must use signed conditional jump
                 CLEVER_DROP_BUFFER
-    .WriteSign:
+    .Write:
     ; at zero --> identify place, where arg is (xmm or stack)
         call    GetFPValue      ; xmm0 = float-point argument
         movq    r13, xmm0
@@ -486,7 +486,7 @@ case_Float:
         cvtsi2sd  xmm6, rax     ; xmm6 == rax
         subsd     xmm0, xmm6    ; xmm0 == float part of float-double number
 
-        ; save in stack numbers in correct order
+    ; save in stack numbers in correct order
         mov     r11, 10         ; value for division
         xor     rcx, rcx        ; counter of numbers to write
         .NextDiv:
@@ -499,7 +499,7 @@ case_Float:
 
         mov     rdx, rcx        ; save number of writing bytes
 
-        ; write numbers from stack:
+    ; write numbers from stack:
         .NextNum:
                 pop     rax
                 add     rax, '0'
@@ -520,7 +520,7 @@ case_Float:
     ; at fifth --> display after dot numbers:
         push      rax
         xor       rdx, rdx
-    .NextADNum:
+        .NextADNum:
                 mulsd     xmm0, [rel ten]
                 cvttsd2si rax, xmm0
                 cvtsi2sd  xmm6, rax
@@ -536,8 +536,6 @@ case_Float:
         add     rax, 6
 
         jmp       AfterPercent
-case_Global:
-        jmp Drop
 case_Octal:
         cmp     r12, OPBuf_size-22
         jb      case_Octal.Write
@@ -814,8 +812,7 @@ times 'b'       dq 0                    ; ... -  a
                 dq case_Decimal         ; d
                 dq case_Exp             ; e
                 dq case_Float           ; f
-                dq case_Global          ; g
-times 'o'-'g'-1 dq 0                    ; h, i, g, k, l, m, n
+times 'o'-'f'-1 dq 0                    ; g, h, i, j, k, l, m, n
                 dq case_Octal           ; o
 times 's'-'o'-1 dq 0                    ; p, q, r
                 dq case_String          ; s
