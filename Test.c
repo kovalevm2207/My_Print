@@ -1,13 +1,11 @@
 #include <stdio.h>
 #include <assert.h>
+#include "KVLVstdio.h"
 
 #define TestPrint(format, ...)               \
     my_res = MyPrint(format, ##__VA_ARGS__); \
     std_res = printf(format, ##__VA_ARGS__); \
     printf("MyPrint: %d, printf: %d\n\n", my_res, std_res);
-
-
-extern int MyPrint(const char* const format, ...);
 
 int main()
 {
