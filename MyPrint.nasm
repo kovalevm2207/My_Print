@@ -194,10 +194,24 @@ Percent:
         ; rdi   - first free position in output buffer
         ; /--------------- rcx = 00 00 00 **
         movzx   rcx, byte [rsi+1]        ; cl = opcode of after percent symbol
-        shl     rcx, 3                   ; rcx*8 - because we save our labels with 8 shift (qword)
-        lea     rdx, [rel JmpTable]
-        mov     rcx, qword [rdx+rcx]   ; rcx = *(JmTable + rxc * 8)
 
+        ; previous version (Non-pipelined):
+        ; shl     rcx, 3                 <-- арифметическая операция
+        ; lea     rdx, [rel JmpTable]    <-- загрузка адреса
+        ; mov     rcx, qword [rdx+rcx]   <-- сложная адресация:
+        ;                                 1) вычисление, арифметическая операция
+        ;                                 2) обращение в память
+        ;                                объединено в одной инструкции, процессор не может
+        ;                                разделить эти стадии, последующие инструкции ждут,
+        ;                                значит в конвейере пузырь
+
+        lea     rdx, [rel JmpTable]
+        lea     rdx, [rdx+rcx*8]        ; вычисление адреса элемента
+                                        ; чистая арифметика без обращения к памяти
+                                        ; может выполняться параллельно с другими инструкциями
+                                        ; и не задерживать конвейер + убрали одну операцию (shl rcx, 3)
+
+        mov     rcx, qword [rdx]        ; простое обращение в память по готовому адресу
 
         cmp     rcx, 0                  ; if we have wrong specifier we should skip him
         jne     Correct
@@ -256,7 +270,8 @@ case_Decimal:
 
     .Continue:
         push    rax                     ; should save return value
-        movsxd  rax, dword [r14+rbp]       ; eax = number value
+        lea     rax, [r14+rbp]       ; eax = number value
+        movsxd  rax, dword [rax]
 
         ; if value equal zero, we can do it faster:
         cmp     eax, 0
@@ -561,7 +576,8 @@ case_String:
 
         xor     rbx, rbx        ; set shift in argument string
 
-        mov     rsi, [r14+rbp]      ; now: rsi = *(rbp+r14*8+16) = start address of string
+        lea     rsi, [r14+rbp]      ; now: rsi = *(rbp+r14*8+16) = start address of string
+        mov     rsi, [rsi]
 
         push    rsi     ; save start address of argument string
 
@@ -675,7 +691,8 @@ GetFPValue:
         cmp     r14, 8*3; = sizeof(arg)*(MaxArgNum-1)
         ja      Stack
         lea     r13, [rel FPTable]
-        jmp     [r13+r14]
+        lea     r13, [r13+r14]
+        jmp     [r13]
 
     ;.xmm0:  <-- optional, because zero argument in MyPrint always is format string ptr (char*) - saved in rcx
     ; so we will used xmm0 such as return value
@@ -685,7 +702,10 @@ GetFPValue:
                ret
     case_xmm3: movsd    xmm0, xmm3
                ret
-    Stack:     movsd    xmm0, [rbp+r14]
+    Stack:     push     r14
+               lea      r14,  [rbp+r14]
+               movsd    xmm0, [r14]
+               pop      r14
                ret
 ;------------------------------------------------------------------------------
 CheckSpecialFloatCases:
